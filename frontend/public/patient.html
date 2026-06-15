@@ -1,0 +1,1279 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>QueueCure '26 — Patient Waiting Room</title>
+  <meta name="description" content="Real-time patient queue — know exactly when it's your turn." />
+
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;700;800&display=swap" rel="stylesheet" />
+
+  <!-- Three.js -->
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+  <!-- Socket.IO -->
+  <script src="/socket.io/socket.io.js"></script>
+
+  <style>
+    /* ══════════════════════════════════════════════════
+       DESIGN TOKENS
+    ══════════════════════════════════════════════════ */
+    :root {
+      --ink:    #04060d;
+      --acid:   #b5ff3e;
+      --acid2:  rgba(181,255,62,0.15);
+      --violet: #7c3aed;
+      --indigo: #4f46e5;
+      --teal:   #0d9488;
+      --rose:   #e11d48;
+      --amber:  #f59e0b;
+      --border: rgba(255,255,255,0.07);
+      --border-hi: rgba(255,255,255,0.13);
+      --txt:    rgba(255,255,255,0.85);
+      --txt-dim: rgba(255,255,255,0.32);
+      --glass:  rgba(4,6,13,0.7);
+    }
+
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    html, body {
+      width: 100%; height: 100%;
+      overflow: hidden;
+      background: var(--ink);
+      color: #fff;
+      font-family: 'Space Grotesk', sans-serif;
+      cursor: none;
+      -webkit-font-smoothing: antialiased;
+    }
+
+    /* ── Three.js Canvas ── */
+    #three-canvas {
+      position: fixed; inset: 0;
+      width: 100%; height: 100%; z-index: 0;
+    }
+
+    /* ── Film grain ── */
+    #grain {
+      position: fixed; inset: -200%;
+      width: 400%; height: 400%;
+      background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 256 256' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)' opacity='1'/%3E%3C/svg%3E");
+      opacity: 0.03;
+      pointer-events: none; z-index: 60;
+      animation: grainShift 0.5s steps(1) infinite;
+    }
+    @keyframes grainShift {
+      0%  { transform: translate(0,0); }
+      25% { transform: translate(-5%,-5%); }
+      50% { transform: translate(5%,5%); }
+      75% { transform: translate(-5%,5%); }
+    }
+
+    /* ── Vignette ── */
+    #vignette {
+      position: fixed; inset: 0; z-index: 2; pointer-events: none;
+      background: radial-gradient(ellipse at center, transparent 40%, rgba(4,6,13,0.85) 100%);
+    }
+
+    /* ── Custom cursor ── */
+    #cur-dot, #cur-ring {
+      position: fixed; pointer-events: none; z-index: 9999;
+      border-radius: 50%; transform: translate(-50%,-50%);
+    }
+    #cur-dot  { width: 8px; height: 8px; background: var(--acid); mix-blend-mode: difference; }
+    #cur-ring { width: 36px; height: 36px; border: 1.5px solid rgba(181,255,62,0.4); transition: width .3s, height .3s; }
+
+    /* ── 3D token label overlays ── */
+    .token-label {
+      position: fixed; transform: translate(-50%,-50%);
+      font-family: 'JetBrains Mono', monospace;
+      font-size: 1.6rem; font-weight: 800;
+      color: rgba(181,255,62,0.6);
+      text-shadow: 0 0 16px rgba(181,255,62,0.5);
+      pointer-events: none; z-index: 4;
+      transition: font-size .5s, color .5s, text-shadow .5s;
+    }
+    .token-label.is-active {
+      font-size: 3rem; color: var(--acid);
+      text-shadow: 0 0 30px var(--acid), 0 0 60px rgba(181,255,62,0.4);
+    }
+
+    /* ── Spotlight ring ── */
+    #spotlight {
+      position: fixed; top: 50%; left: 50%;
+      transform: translate(-50%,-50%);
+      width: 280px; height: 280px;
+      border-radius: 50%; pointer-events: none; z-index: 3;
+      border: 1.5px solid rgba(181,255,62,0.18);
+      box-shadow: 0 0 80px rgba(181,255,62,0.04), inset 0 0 40px rgba(181,255,62,0.03);
+      animation: spotPulse 4s ease-in-out infinite;
+      transition: border-color .5s, box-shadow .5s;
+    }
+    #spotlight.alert {
+      border-color: rgba(245,158,11,0.5);
+      box-shadow: 0 0 80px rgba(245,158,11,0.12);
+    }
+    @keyframes spotPulse {
+      0%,100%{ transform: translate(-50%,-50%) scale(1); opacity:.7; }
+      50%    { transform: translate(-50%,-50%) scale(1.04); opacity:1; }
+    }
+
+    /* ── Progress bar ── */
+    #progress-bar {
+      position: fixed; bottom: 0; left: 0;
+      height: 2px; background: var(--acid);
+      box-shadow: 0 0 10px var(--acid);
+      z-index: 200;
+      transition: width 1.4s cubic-bezier(0.4,0,0.2,1);
+    }
+
+    /* ── Your-turn alert ── */
+    #your-turn {
+      display: none;
+      position: fixed; bottom: 100px; left: 50%;
+      transform: translateX(-50%);
+      z-index: 40; pointer-events: none;
+      background: rgba(245,158,11,0.08);
+      border: 1.5px solid var(--amber);
+      padding: 0.75rem 2rem;
+      font-size: 0.75rem; letter-spacing: 0.22em;
+      text-transform: uppercase;
+      color: var(--amber);
+      border-radius: 0.5rem;
+      box-shadow: 0 0 40px rgba(245,158,11,0.2);
+      animation: yourTurnPulse 1.2s ease-in-out infinite alternate;
+    }
+    @keyframes yourTurnPulse {
+      from { opacity:.7; box-shadow: 0 0 20px rgba(245,158,11,.15); }
+      to   { opacity:1;  box-shadow: 0 0 60px rgba(245,158,11,.4); }
+    }
+
+    /* ── My token banner ── */
+    #my-banner {
+      display: none;
+      position: fixed; top: 56px; left: 50%;
+      transform: translateX(-50%);
+      z-index: 40; pointer-events: none;
+      background: rgba(181,255,62,0.05);
+      border: 1px solid rgba(181,255,62,0.25);
+      padding: 0.4rem 1.2rem;
+      font-size: 0.65rem; letter-spacing: 0.18em;
+      text-transform: uppercase; color: var(--acid);
+      border-radius: 0.4rem; backdrop-filter: blur(10px);
+      font-family: 'JetBrains Mono', monospace;
+    }
+
+    /* ══════════════════════════════════════════════════
+       FULL-SCREEN UI LAYER
+    ══════════════════════════════════════════════════ */
+    #ui {
+      position: fixed; inset: 0; z-index: 10;
+      display: grid;
+      grid-template-rows: 52px 1fr 120px 34px;
+      pointer-events: none;
+    }
+
+    /* ── HEADER ── */
+    #header {
+      display: flex; align-items: center; justify-content: space-between;
+      padding: 0 1.5rem;
+      background: var(--glass);
+      border-bottom: 1px solid var(--border);
+      backdrop-filter: blur(20px);
+      pointer-events: auto;
+    }
+    .header-brand {
+      display: flex; align-items: center; gap: 0.6rem;
+    }
+    .header-logo-dot {
+      width: 8px; height: 8px; border-radius: 50%;
+      background: var(--acid); box-shadow: 0 0 8px var(--acid);
+      animation: dotPulse 2s ease-in-out infinite;
+    }
+    @keyframes dotPulse { 0%,100%{opacity:1} 50%{opacity:.35} }
+    .header-logo-name {
+      font-size: 0.9rem; font-weight: 800;
+      letter-spacing: 0.08em; text-transform: uppercase;
+      color: #fff;
+    }
+    .header-logo-sub {
+      font-size: 0.6rem; letter-spacing: 0.18em;
+      color: var(--txt-dim); font-family: 'JetBrains Mono', monospace;
+    }
+    .header-meta { display: flex; align-items: center; gap: 1.5rem; }
+    .header-clock {
+      font-size: 0.65rem; letter-spacing: 0.14em;
+      color: var(--txt-dim); font-family: 'JetBrains Mono', monospace;
+    }
+    .header-clinic {
+      font-size: 0.65rem; letter-spacing: 0.14em;
+      color: rgba(181,255,62,0.5); font-family: 'JetBrains Mono', monospace;
+    }
+    .conn-badge {
+      font-size: 0.62rem; letter-spacing: 0.14em;
+      padding: 0.25rem 0.75rem;
+      border-radius: 999px;
+      font-family: 'JetBrains Mono', monospace;
+      transition: all .3s;
+    }
+    .conn-badge.connecting   { background: rgba(245,158,11,.08); color: var(--amber); border: 1px solid rgba(245,158,11,.2); }
+    .conn-badge.connected    { background: rgba(181,255,62,.08); color: var(--acid); border: 1px solid rgba(181,255,62,.2); }
+    .conn-badge.disconnected { background: rgba(225,29,72,.08); color: #f87171; border: 1px solid rgba(225,29,72,.2); }
+    .header-home {
+      font-size: 0.62rem; letter-spacing: 0.1em;
+      color: var(--txt-dim); text-decoration: none;
+      border: 1px solid var(--border); border-radius: 0.4rem;
+      padding: 0.25rem 0.6rem; transition: all .2s;
+      pointer-events: auto;
+    }
+    .header-home:hover { color: #fff; border-color: var(--border-hi); }
+
+    /* ── MAIN GRID ── */
+    #main {
+      display: grid;
+      grid-template-columns: 220px 1fr 220px;
+      gap: 1.25rem; padding: 1.25rem;
+      align-items: center;
+    }
+    @media (max-width: 768px) {
+      #main { grid-template-columns: 1fr; grid-template-rows: auto 1fr auto; }
+      .side-panel { display: flex; flex-direction: row !important; gap: 0.75rem; }
+      .panel-box { flex: 1; }
+    }
+
+    /* ── PANEL BOX ── */
+    .panel-box {
+      background: var(--glass);
+      border: 1px solid var(--border);
+      border-radius: 1rem;
+      backdrop-filter: blur(20px);
+      padding: 1.1rem;
+      position: relative; overflow: hidden;
+      transition: border-color .3s;
+    }
+    .panel-box:hover { border-color: var(--border-hi); }
+    .panel-box::before {
+      content: '';
+      position: absolute; top: 0; left: 0; right: 0; height: 1px;
+      background: linear-gradient(90deg, transparent, rgba(181,255,62,0.3), transparent);
+      opacity: 0.6;
+    }
+    .panel-label {
+      font-size: 0.6rem; letter-spacing: 0.22em;
+      color: var(--txt-dim); text-transform: uppercase;
+      font-family: 'JetBrains Mono', monospace;
+      margin-bottom: 0.5rem;
+    }
+    .panel-value {
+      font-size: 3.2rem; font-weight: 900;
+      letter-spacing: -0.04em; line-height: 1;
+      font-family: 'Space Grotesk', sans-serif;
+    }
+    .panel-value--acid  { color: var(--acid); }
+    .panel-value--amber { color: var(--amber); }
+    .panel-value--dim   { color: rgba(255,255,255,0.5); }
+    .panel-sub {
+      font-size: 0.6rem; letter-spacing: 0.12em;
+      color: var(--txt-dim); margin-top: 0.4rem;
+      font-family: 'JetBrains Mono', monospace;
+    }
+
+    /* Odometer */
+    .odo {
+      display: inline-flex; align-items: baseline;
+      font-family: 'Space Grotesk', sans-serif;
+      overflow: hidden;
+    }
+    .odo-col {
+      position: relative; height: 1.15em; width: 0.62em; overflow: hidden;
+    }
+    .odo-strip {
+      position: absolute; top: 0; left: 0;
+      display: flex; flex-direction: column;
+      transition: transform 0.65s cubic-bezier(0.16,1,0.3,1);
+    }
+    .odo-strip span { display: block; height: 1.15em; line-height: 1.15em; }
+
+    /* Pip track */
+    .pip-track { display: flex; flex-wrap: wrap; gap: 4px; margin-top: 0.65rem; }
+    .pip {
+      width: 6px; height: 6px; border-radius: 50%;
+      background: rgba(181,255,62,0.1); border: 1px solid rgba(181,255,62,0.2);
+      transition: all .3s;
+    }
+    .pip.active { background: var(--acid); box-shadow: 0 0 6px var(--acid); border-color: var(--acid); }
+
+    /* ── CENTER PANEL ── */
+    #center-panel {
+      display: flex; flex-direction: column;
+      align-items: center; justify-content: center;
+      gap: 0.5rem; text-align: center;
+    }
+    .slash-label {
+      font-size: 0.62rem; letter-spacing: 0.32em;
+      color: var(--txt-dim); font-family: 'JetBrains Mono', monospace;
+      animation: glitch 6s infinite;
+    }
+    @keyframes glitch {
+      0%,92%,100%{ transform:none; }
+      93%{ transform: translate(-3px,1px) skewX(-4deg); }
+      95%{ transform: translate(3px,-2px) skewX(3deg); }
+      97%{ transform: translate(-1px,2px); }
+    }
+    .center-divider {
+      width: 180px; height: 1px;
+      background: linear-gradient(90deg, transparent, rgba(181,255,62,0.3), transparent);
+    }
+
+    /* BIG NOW-SERVING NUMBER */
+    #now-serving-num {
+      font-size: clamp(7rem, 18vw, 16rem);
+      font-weight: 900; letter-spacing: -0.05em;
+      line-height: 0.88;
+      font-family: 'Space Grotesk', sans-serif;
+      color: #fff;
+      filter: drop-shadow(0 0 30px rgba(255,255,255,0.12));
+      will-change: transform, color;
+      transition: color .18s, transform .35s cubic-bezier(0.34,1.56,0.64,1);
+      user-select: none;
+    }
+    #now-serving-num.flash {
+      color: var(--acid);
+      filter: drop-shadow(0 0 40px var(--acid)) drop-shadow(0 0 80px rgba(181,255,62,0.3));
+      transform: scale(1.18);
+    }
+    #now-serving-num.alert {
+      color: var(--amber);
+      filter: drop-shadow(0 0 40px var(--amber));
+      transform: scale(1.22);
+    }
+
+    .serving-name-text {
+      font-size: 0.72rem; letter-spacing: 0.2em;
+      color: var(--txt-dim); text-transform: uppercase;
+      font-family: 'JetBrains Mono', monospace;
+      max-width: 280px; overflow: hidden;
+      text-overflow: ellipsis; white-space: nowrap;
+    }
+
+    /* Dormant message */
+    #dormant-msg {
+      display: none; flex-direction: column;
+      align-items: center; gap: 0.4rem; margin-top: 0.5rem;
+    }
+    .dormant-title {
+      font-size: 1.4rem; font-weight: 700;
+      color: rgba(181,255,62,0.4); letter-spacing: 0.1em;
+    }
+    .dormant-sub {
+      font-size: 0.62rem; letter-spacing: 0.2em;
+      color: var(--txt-dim); text-transform: uppercase;
+      font-family: 'JetBrains Mono', monospace;
+      animation: blinkSlow 2.5s ease-in-out infinite;
+    }
+    @keyframes blinkSlow { 0%,100%{opacity:1} 50%{opacity:.2} }
+
+    /* ── TICKER ── */
+    #ticker-bar {
+      border-top: 1px solid var(--border);
+      background: var(--glass); backdrop-filter: blur(16px);
+      display: flex; align-items: center; overflow: hidden;
+      position: relative;
+    }
+    #ticker-bar::before {
+      content: ''; position: absolute;
+      top: 0; bottom: 0; left: 0; width: 80px; z-index: 2;
+      background: linear-gradient(to right, var(--glass), transparent);
+    }
+    #ticker-bar::after {
+      content: ''; position: absolute;
+      top: 0; bottom: 0; right: 0; width: 80px; z-index: 2;
+      background: linear-gradient(to left, var(--glass), transparent);
+    }
+    .ticker-inner {
+      display: flex; white-space: nowrap;
+      animation: tickerScroll 38s linear infinite;
+      width: max-content;
+    }
+    @keyframes tickerScroll { from{transform:translateX(0)} to{transform:translateX(-50%)} }
+    .ticker-item {
+      padding: 0 2rem;
+      font-size: 0.6rem; letter-spacing: 0.18em;
+      color: var(--txt-dim); font-family: 'JetBrains Mono', monospace;
+    }
+    .ticker-item.serving { color: var(--acid); }
+    .ticker-sep { color: rgba(181,255,62,0.2); padding: 0 0.5rem; }
+
+    /* ── STATUS BAR ── */
+    #status-bar {
+      display: flex; align-items: center;
+      justify-content: space-between; padding: 0 1.5rem;
+      background: var(--glass); border-top: 1px solid rgba(181,255,62,0.06);
+      backdrop-filter: blur(16px);
+    }
+    #status-bar span {
+      font-size: 0.55rem; letter-spacing: 0.16em;
+      color: rgba(255,255,255,0.15); font-family: 'JetBrains Mono', monospace;
+    }
+
+    /* ── Demo controls ── */
+    #demo-panel {
+      position: fixed; bottom: 48px; right: 14px;
+      z-index: 500; display: flex; flex-direction: column; gap: 5px;
+      pointer-events: auto; opacity: 0.55;
+    }
+    #demo-panel:hover { opacity: 1; }
+    #demo-panel button {
+      font-family: 'JetBrains Mono', monospace;
+      font-size: 0.55rem; letter-spacing: 0.1em;
+      padding: 5px 9px;
+      background: transparent; cursor: pointer; transition: all .2s;
+      border-radius: 4px;
+    }
+    .demo-acid   { border: 1px solid rgba(181,255,62,.3); color: rgba(181,255,62,.7); }
+    .demo-acid:hover { background: rgba(181,255,62,.08); color: var(--acid); }
+    .demo-amber  { border: 1px solid rgba(245,158,11,.3); color: rgba(245,158,11,.7); }
+    .demo-amber:hover { background: rgba(245,158,11,.08); color: var(--amber); }
+    .demo-dim    { border: 1px solid var(--border); color: var(--txt-dim); }
+    .demo-dim:hover { background: rgba(255,255,255,.04); color: #fff; }
+
+    /* Screen shake */
+    @keyframes shake {
+      0%  { transform:translate(0,0); }
+      15% { transform:translate(-4px,2px); }
+      30% { transform:translate(4px,-3px); }
+      45% { transform:translate(-3px,3px); }
+      60% { transform:translate(3px,-2px); }
+      75% { transform:translate(-2px,1px); }
+      90% { transform:translate(2px,-1px); }
+      100%{ transform:translate(0,0); }
+    }
+    .shake { animation: shake .45s ease both; }
+
+    /* Drop bounce for new tokens */
+    @keyframes dropBounce {
+      0%  { transform:translateY(-50px); opacity:0; }
+      60% { transform:translateY(6px); opacity:1; }
+      80% { transform:translateY(-3px); }
+      100%{ transform:translateY(0); }
+    }
+    .drop-in { animation: dropBounce .6s cubic-bezier(0.23,1,0.32,1) forwards; }
+
+    /* Pipeline preview chips */
+    .pipe-chip {
+      font-size: 0.5rem; letter-spacing: 0.1em;
+      padding: 2px 5px; border-radius: 3px;
+      font-family: 'JetBrains Mono', monospace;
+    }
+  </style>
+</head>
+<body>
+
+  <!-- BACKGROUNDS -->
+  <canvas id="three-canvas"></canvas>
+  <div id="grain"></div>
+  <div id="vignette"></div>
+
+  <!-- OVERLAYS -->
+  <div id="spotlight"></div>
+  <div id="token-labels"></div>
+  <div id="my-banner"></div>
+  <div id="your-turn"><svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor" style="vertical-align:middle;margin-right:4px;"><polygon points="5 3 19 12 5 21 5 3"/></svg>&nbsp; YOUR TURN — PLEASE PROCEED TO THE DOCTOR</div>
+  <div id="progress-bar" style="width:0%"></div>
+
+  <!-- CURSOR -->
+  <div id="cur-dot"></div>
+  <div id="cur-ring"></div>
+
+  <!-- UI LAYER -->
+  <div id="ui">
+
+    <!-- HEADER -->
+    <header id="header">
+      <div class="header-brand">
+        <div class="header-logo-dot"></div>
+        <div>
+          <div class="header-logo-name">QueueCure <span style="color:var(--acid)">'26</span></div>
+        </div>
+        <span class="header-logo-sub" style="margin-left:.5rem;">// Patient Waiting Room</span>
+      </div>
+      <div class="header-meta">
+        <span class="header-clock" id="live-clock"></span>
+        <span class="header-clinic" id="clinic-label"></span>
+        <span id="conn-badge" class="conn-badge connecting">● Connecting</span>
+        <a href="/" class="header-home">← Home</a>
+      </div>
+    </header>
+
+    <!-- MAIN -->
+    <main id="main">
+
+      <!-- LEFT -->
+      <aside class="side-panel" style="display:flex;flex-direction:column;gap:1rem;">
+
+        <div class="panel-box">
+          <div class="panel-label">Patients Ahead</div>
+          <div class="panel-value panel-value--acid">
+            <span class="odo" id="ahead-odo"></span>
+          </div>
+          <div id="pip-track" class="pip-track"></div>
+        </div>
+
+        <div class="panel-box" id="my-token-panel" style="display:none;">
+          <div class="panel-label">Your Token No.</div>
+          <div class="panel-value panel-value--dim" id="my-token-num"></div>
+          <div class="panel-sub" id="my-position-text"></div>
+        </div>
+
+        <div class="panel-box">
+          <div class="panel-label">Queue Status</div>
+          <div id="status-text" style="font-size:.85rem;letter-spacing:.1em;color:var(--acid);font-weight:700;font-family:'JetBrains Mono',monospace;margin-top:.15rem;">ACTIVE</div>
+          <div class="panel-sub" id="total-text">0 REGISTERED</div>
+        </div>
+
+      </aside>
+
+      <!-- CENTER -->
+      <section id="center-panel">
+        <div class="slash-label">// NOW SERVING //</div>
+        <div class="center-divider"></div>
+
+        <div id="now-serving-num">—</div>
+
+        <div class="serving-name-text" id="serving-name">WAITING FOR PATIENTS</div>
+
+        <div class="center-divider"></div>
+
+        <div id="dormant-msg">
+          <div class="dormant-title">THE DOCTOR IS READY</div>
+          <div class="dormant-sub">Please register at reception</div>
+        </div>
+      </section>
+
+      <!-- RIGHT -->
+      <aside class="side-panel" style="display:flex;flex-direction:column;gap:1rem;">
+
+        <div class="panel-box">
+          <div class="panel-label">Est. Wait Time</div>
+          <div style="display:flex;align-items:baseline;gap:.4rem;margin-top:.15rem;">
+            <span class="odo panel-value--amber" id="wait-odo" style="font-size:3.2rem;font-family:'Space Grotesk',sans-serif;font-weight:900;"></span>
+            <span style="font-size:.62rem;letter-spacing:.14em;color:var(--txt-dim);font-family:'JetBrains Mono',monospace;">MIN</span>
+          </div>
+          <div class="panel-sub">AVG CONSULT · <span id="avg-time-text">—</span> MIN/PATIENT</div>
+        </div>
+
+        <div class="panel-box">
+          <div class="panel-label">Total in Queue</div>
+          <div class="panel-value panel-value--dim" id="total-queue-num">0</div>
+          <div class="panel-sub">REGISTERED PATIENTS</div>
+        </div>
+
+        <div class="panel-box" style="padding:.85rem;">
+          <div class="panel-label">Pipeline</div>
+          <div id="pipeline-preview" style="display:flex;flex-wrap:wrap;gap:3px;margin-top:.35rem;"></div>
+        </div>
+
+      </aside>
+    </main>
+
+    <!-- TICKER -->
+    <div id="ticker-bar">
+      <div class="ticker-inner" id="ticker-inner">
+        <span class="ticker-item">// NO ACTIVE QUEUE — REGISTER AT RECEPTION</span>
+        <span class="ticker-sep">◆</span>
+        <span class="ticker-item">// NO ACTIVE QUEUE — REGISTER AT RECEPTION</span>
+        <span class="ticker-sep">◆</span>
+      </div>
+    </div>
+
+    <!-- STATUS BAR -->
+    <div id="status-bar">
+      <span>QueueCure '26 // Patient Terminal</span>
+      <span id="last-update">LAST UPDATE: —</span>
+    </div>
+
+  </div><!-- /#ui -->
+
+  <!-- DEMO PANEL -->
+  <div id="demo-panel">
+    <button class="demo-acid"  onclick="DemoControls.callNext()"><svg width="10" height="10" viewBox="0 0 24 24" fill="currentColor"><polygon points="5 3 19 12 5 21 5 3"/></svg> Call Next</button>
+    <button class="demo-amber" onclick="DemoControls.addToken()">+ Add Token</button>
+    <button class="demo-dim"   onclick="DemoControls.dormant()">~ Dormant</button>
+  </div>
+
+  <script>
+  'use strict';
+
+  /* ══════════════════════════════════════════════════
+     URL PARAMS & CONSTANTS
+  ══════════════════════════════════════════════════ */
+  const urlParams = new URLSearchParams(window.location.search);
+  const MY_TOKEN  = urlParams.get('token')   ? parseInt(urlParams.get('token'))   : null;
+  const CLINIC_ID = urlParams.get('clinicId') || 'clinic-001';
+
+  /* ══════════════════════════════════════════════════
+     GLOBAL STATE
+  ══════════════════════════════════════════════════ */
+  const APP = {
+    currentToken:    null,
+    waitingPatients: [],
+    servingPatient:  null,
+    avgConsultTime:  8,
+    status:          'active',
+    isDormant:       false,
+    demoCounter:     5,
+  };
+
+  /* ══════════════════════════════════════════════════
+     THREE.JS 3D ENGINE
+  ══════════════════════════════════════════════════ */
+  const ThreeEngine = (() => {
+    let scene, camera, renderer;
+    let tokenMeshes   = [];
+    let particleSystems = [];
+    let waveMesh = null, waveGeo = null;
+    let t3D = 0, camTheta = 0;
+    let labelEls = {};
+
+    const C = {
+      ACID:   0xb5ff3e,
+      DIM:    0x4a7a1a,
+      AMBER:  0xf59e0b,
+      DARK:   0x04060d,
+    };
+
+    function init() {
+      const canvas = document.getElementById('three-canvas');
+      scene = new THREE.Scene();
+      scene.background = new THREE.Color(C.DARK);
+      scene.fog = new THREE.FogExp2(C.DARK, 0.026);
+
+      camera = new THREE.PerspectiveCamera(55, window.innerWidth / window.innerHeight, 0.1, 800);
+      camera.position.set(0, 2.5, 14);
+      camera.lookAt(0, 0, 0);
+
+      renderer = new THREE.WebGLRenderer({ canvas, antialias: true });
+      renderer.setSize(window.innerWidth, window.innerHeight);
+      renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+      renderer.shadowMap.enabled = true;
+
+      setupLights();
+      setupFloor();
+      loop();
+
+      window.addEventListener('resize', () => {
+        camera.aspect = window.innerWidth / window.innerHeight;
+        camera.updateProjectionMatrix();
+        renderer.setSize(window.innerWidth, window.innerHeight);
+      });
+    }
+
+    function setupLights() {
+      scene.add(new THREE.AmbientLight(0xffffff, 0.04));
+
+      // Central acid spotlight
+      const spot = new THREE.SpotLight(C.ACID, 4, 22, Math.PI / 9, 0.6, 1.2);
+      spot.position.set(0, 12, 2); spot.castShadow = true;
+      spot.shadow.mapSize.setScalar(512);
+      scene.add(spot);
+      const st = new THREE.Object3D(); st.position.set(0,0,0);
+      scene.add(st); spot.target = st;
+
+      // Rim: indigo left
+      const rimL = new THREE.PointLight(0x4f46e5, 0.7, 20);
+      rimL.position.set(-9, 4, 6); scene.add(rimL);
+
+      // Rim: violet right
+      const rimR = new THREE.PointLight(0x7c3aed, 0.4, 20);
+      rimR.position.set(9, 4, 6); scene.add(rimR);
+    }
+
+    function setupFloor() {
+      const grid = new THREE.GridHelper(80, 80, 0xb5ff3e, 0x0a1200);
+      grid.position.y = -3.2;
+      grid.material.opacity = 0.1; grid.material.transparent = true;
+      scene.add(grid);
+    }
+
+    function makeToken(tokenNum, isActive) {
+      const group = new THREE.Group();
+      const size  = isActive ? 1.5 : 0.75;
+
+      const geo = new THREE.IcosahedronGeometry(size, 2);
+      const mat = new THREE.MeshPhongMaterial({
+        color:     isActive ? C.ACID : C.DIM,
+        emissive:  isActive ? C.ACID : 0x112200,
+        emissiveIntensity: isActive ? 0.3 : 0.1,
+        transparent: true,
+        opacity:   isActive ? 0.85 : 0.5,
+        shininess: 160,
+      });
+      const mesh = new THREE.Mesh(geo, mat);
+      mesh.castShadow = true;
+      group.add(mesh);
+
+      const wireMat = new THREE.MeshBasicMaterial({
+        color: isActive ? 0xd4ff7a : 0x1a3300,
+        wireframe: true, transparent: true,
+        opacity: isActive ? 0.25 : 0.07,
+      });
+      group.add(new THREE.Mesh(new THREE.IcosahedronGeometry(size * 1.02, 2), wireMat));
+
+      if (isActive) {
+        const ringGeo = new THREE.TorusGeometry(2.4, 0.03, 8, 80);
+        const ringMat = new THREE.MeshBasicMaterial({ color: C.ACID, transparent: true, opacity: 0.45 });
+        const ring = new THREE.Mesh(ringGeo, ringMat);
+        ring.rotation.x = Math.PI / 2;
+        group.add(ring);
+
+        const ring2 = ring.clone();
+        ring2.rotation.set(Math.PI * 0.6, 0.4, 0);
+        ring2.scale.setScalar(1.2);
+        ring2.material = ring.material.clone();
+        ring2.material.opacity = 0.18;
+        group.add(ring2);
+
+        group.add(Object.assign(new THREE.PointLight(C.ACID, 2.5, 7), {}));
+      }
+
+      return { group, tokenNum, isActive };
+    }
+
+    function buildQueue(waitingPatients, servingPatient) {
+      clearTokens(); clearLabels();
+      if (!servingPatient && (!waitingPatients || !waitingPatients.length)) { enterDormant(); return; }
+      exitDormant();
+
+      if (servingPatient) {
+        const t = makeToken(servingPatient.tokenNumber, true);
+        t.group.position.set(0, 0, 0);
+        scene.add(t.group); tokenMeshes.push(t);
+        createLabel(servingPatient.tokenNumber, true);
+      }
+
+      (waitingPatients || []).slice(0, 10).forEach((p, i) => {
+        const t = makeToken(p.tokenNumber, false);
+        const angle = i * 0.45;
+        const dist  = 3.2 + i * 2.0;
+        t.group.position.set(Math.sin(angle) * (i * 0.35), -0.6 + Math.sin(i * 0.8) * 0.15, -dist);
+        t.group.scale.setScalar(Math.max(0.22, 1 - i * 0.082));
+        scene.add(t.group); tokenMeshes.push(t);
+        createLabel(p.tokenNumber, false);
+      });
+    }
+
+    function clearTokens() {
+      tokenMeshes.forEach(({ group }) => {
+        scene.remove(group);
+        group.traverse(c => {
+          if (c.geometry) c.geometry.dispose();
+          if (c.material) { [].concat(c.material).forEach(m => m.dispose()); }
+        });
+      });
+      tokenMeshes = [];
+    }
+
+    function createLabel(tokenNum, isActive) {
+      const el = document.createElement('div');
+      el.className = 'token-label' + (isActive ? ' is-active' : '');
+      el.textContent = String(tokenNum).padStart(3, '0');
+      document.getElementById('token-labels').appendChild(el);
+      labelEls[tokenNum] = el;
+    }
+
+    function clearLabels() {
+      document.getElementById('token-labels').innerHTML = '';
+      labelEls = {};
+    }
+
+    function updateLabels() {
+      const v = new THREE.Vector3();
+      tokenMeshes.forEach(({ group, tokenNum }) => {
+        const el = labelEls[tokenNum]; if (!el) return;
+        v.setFromMatrixPosition(group.matrixWorld); v.project(camera);
+        const x = (v.x * .5 + .5) * window.innerWidth;
+        const y = (-v.y * .5 + .5) * window.innerHeight;
+        if (v.z < 1) {
+          el.style.left = x + 'px'; el.style.top = (y - 20) + 'px';
+          el.style.display = ''; el.style.opacity = Math.min(1, group.scale.x * 1.2);
+        } else { el.style.display = 'none'; }
+      });
+    }
+
+    function explode(pos) {
+      const N = 300;
+      const positions = new Float32Array(N * 3);
+      const colors    = new Float32Array(N * 3);
+      const velocities = [];
+
+      for (let i = 0; i < N; i++) {
+        positions[i*3] = pos.x; positions[i*3+1] = pos.y; positions[i*3+2] = pos.z;
+        const theta = Math.random() * Math.PI * 2;
+        const phi   = Math.acos(2 * Math.random() - 1);
+        const spd   = 0.08 + Math.random() * 0.22;
+        velocities.push({ x: Math.sin(phi)*Math.cos(theta)*spd, y: Math.sin(phi)*Math.sin(theta)*spd+0.06, z: Math.cos(phi)*spd });
+        if (Math.random() < 0.2) { colors[i*3]=0.96; colors[i*3+1]=0.62; colors[i*3+2]=0.04; } // amber
+        else { colors[i*3]=0.71; colors[i*3+1]=1; colors[i*3+2]=0.24; } // acid
+      }
+
+      const geo = new THREE.BufferGeometry();
+      geo.setAttribute('position', new THREE.BufferAttribute(positions, 3));
+      geo.setAttribute('color', new THREE.BufferAttribute(colors, 3));
+      const mat = new THREE.PointsMaterial({
+        size: 0.09, vertexColors: true,
+        transparent: true, opacity: 1,
+        blending: THREE.AdditiveBlending, depthWrite: false,
+      });
+      const pts = new THREE.Points(geo, mat);
+      scene.add(pts);
+      particleSystems.push({ pts, geo, mat, velocities, life: 1.0 });
+    }
+
+    function tickParticles() {
+      particleSystems = particleSystems.filter(ps => {
+        ps.life -= 0.016; ps.mat.opacity = Math.max(0, ps.life);
+        const pos = ps.geo.attributes.position;
+        for (let i = 0; i < ps.velocities.length; i++) {
+          const v = ps.velocities[i]; v.y -= 0.004;
+          pos.array[i*3] += v.x; pos.array[i*3+1] += v.y; pos.array[i*3+2] += v.z;
+        }
+        pos.needsUpdate = true;
+        if (ps.life <= 0) { scene.remove(ps.pts); ps.geo.dispose(); ps.mat.dispose(); return false; }
+        return true;
+      });
+    }
+
+    let waveTime = 0;
+    function enterDormant() {
+      if (waveMesh) return;
+      waveGeo = new THREE.PlaneGeometry(36, 24, 90, 60);
+      waveMesh = new THREE.Mesh(waveGeo, new THREE.MeshBasicMaterial({
+        color: 0xb5ff3e, wireframe: true, transparent: true, opacity: 0.08,
+      }));
+      waveMesh.rotation.x = -Math.PI * 0.32;
+      waveMesh.position.set(0, -0.5, -3);
+      scene.add(waveMesh);
+    }
+    function exitDormant() {
+      if (!waveMesh) return;
+      scene.remove(waveMesh);
+      if (waveGeo) waveGeo.dispose();
+      waveMesh = null; waveGeo = null;
+    }
+    function tickWave() {
+      if (!waveGeo) return;
+      waveTime += 0.007;
+      const pos = waveGeo.attributes.position;
+      for (let i = 0; i < pos.count; i++) {
+        const x = pos.getX(i), z = pos.getZ(i);
+        pos.setY(i,
+          Math.sin(x * 0.35 + waveTime) * 0.9 +
+          Math.sin(z * 0.25 + waveTime * 0.65) * 0.55 +
+          Math.sin(x * 0.12 + z * 0.18 + waveTime * 0.4) * 0.3
+        );
+      }
+      pos.needsUpdate = true;
+    }
+
+    function loop() {
+      requestAnimationFrame(loop);
+      t3D += 0.016; camTheta += 0.0018;
+      camera.position.x = Math.sin(camTheta) * 1.8;
+      camera.position.y = 2.5 + Math.sin(t3D * 0.25) * 0.4;
+      camera.lookAt(0, 0, 0);
+
+      tokenMeshes.forEach(({ group, isActive }, idx) => {
+        if (!group) return;
+        group.rotation.y += isActive ? 0.009 : 0.004;
+        group.rotation.x += 0.002;
+        group.position.y  = isActive
+          ? Math.sin(t3D * 1.3) * 0.18
+          : -0.6 + Math.sin(t3D * 0.7 + idx * 1.2) * 0.1;
+      });
+
+      tickParticles(); tickWave(); updateLabels();
+      renderer.render(scene, camera);
+    }
+
+    return {
+      init, buildQueue,
+      explodeCenter: () => explode({ x:0, y:0, z:0 }),
+      enterDormant, exitDormant,
+    };
+  })();
+
+  /* ══════════════════════════════════════════════════
+     ODOMETER
+  ══════════════════════════════════════════════════ */
+  const Odometer = (() => {
+    function set(containerId, value) {
+      const el = document.getElementById(containerId); if (!el) return;
+      const str = String(Math.max(0, Math.floor(value))).padStart(2, '0');
+      const cols = el.querySelectorAll('.odo-col');
+      if (cols.length !== str.length) {
+        el.innerHTML = '';
+        str.split('').forEach(() => {
+          const col = document.createElement('div'); col.className = 'odo-col';
+          const strip = document.createElement('div'); strip.className = 'odo-strip';
+          for (let d = 0; d <= 9; d++) { const s = document.createElement('span'); s.textContent = d; strip.appendChild(s); }
+          col.appendChild(strip); el.appendChild(col);
+        });
+      }
+      el.querySelectorAll('.odo-col').forEach((col, i) => {
+        const d = parseInt(str[i]) || 0;
+        const strip = col.querySelector('.odo-strip');
+        if (strip) strip.style.transform = `translateY(-${d * 1.15}em)`;
+      });
+    }
+    return { set };
+  })();
+
+  /* ══════════════════════════════════════════════════
+     TICKER
+  ══════════════════════════════════════════════════ */
+  function updateTicker(waitingPatients, servingPatient) {
+    const inner = document.getElementById('ticker-inner');
+    const all = [];
+    if (servingPatient) all.push({ num: servingPatient.tokenNumber, name: servingPatient.name, serving: true });
+    waitingPatients.forEach(p => all.push({ num: p.tokenNumber, name: p.name, serving: false }));
+
+    if (!all.length) {
+      inner.innerHTML =
+        '<span class="ticker-item">// NO ACTIVE QUEUE — REGISTER AT RECEPTION</span>' +
+        '<span class="ticker-sep">◆</span>' +
+        '<span class="ticker-item">// NO ACTIVE QUEUE — REGISTER AT RECEPTION</span>' +
+        '<span class="ticker-sep">◆</span>';
+      return;
+    }
+    const items = all.map(p =>
+      `<span class="ticker-item${p.serving ? ' serving' : ''}">[${String(p.num).padStart(3,'0')}] ${escHTML(p.name||'PATIENT')} — ${p.serving?'SERVING':'WAITING'}</span><span class="ticker-sep">◆</span>`
+    ).join('');
+    inner.innerHTML = items + items;
+  }
+
+  /* ══════════════════════════════════════════════════
+     PIPS & PIPELINE
+  ══════════════════════════════════════════════════ */
+  function updatePips(count) {
+    const track = document.getElementById('pip-track'); if (!track) return;
+    track.innerHTML = '';
+    const show = Math.min(count, 18);
+    for (let i = 0; i < show; i++) {
+      const pip = document.createElement('div');
+      pip.className = 'pip' + (i === 0 ? ' active' : '');
+      track.appendChild(pip);
+    }
+  }
+
+  function updatePipeline(waitingPatients) {
+    const el = document.getElementById('pipeline-preview'); if (!el) return;
+    el.innerHTML = '';
+    waitingPatients.slice(0, 12).forEach((p, i) => {
+      const chip = document.createElement('div');
+      chip.className = 'pipe-chip';
+      const a = Math.max(0.15, 0.8 - i * 0.06);
+      chip.style.cssText = `border:1px solid rgba(181,255,62,${a});color:rgba(181,255,62,${a});`;
+      chip.textContent = String(p.tokenNumber).padStart(3, '0');
+      el.appendChild(chip);
+    });
+  }
+
+  /* ══════════════════════════════════════════════════
+     MAIN RENDER
+  ══════════════════════════════════════════════════ */
+  function render(data) {
+    if (!data) return;
+
+    const {
+      currentToken      = 0,
+      waitingPatients   = [],
+      servingPatient    = null,
+      avgConsultationTime = 8,
+      status            = 'active',
+      waitingCount      = 0,
+    } = data;
+
+    const prevToken = APP.currentToken;
+    APP.currentToken    = currentToken;
+    APP.waitingPatients = waitingPatients;
+    APP.servingPatient  = servingPatient;
+    APP.avgConsultTime  = avgConsultationTime;
+    APP.status          = status;
+    APP.isDormant       = !servingPatient && waitingCount === 0;
+
+    const numEl = document.getElementById('now-serving-num');
+    if (servingPatient && currentToken > 0) {
+      numEl.textContent = String(currentToken).padStart(3, '0');
+    } else {
+      numEl.textContent = '—';
+    }
+
+    const nameEl = document.getElementById('serving-name');
+    nameEl.textContent = servingPatient
+      ? escHTML(servingPatient.name || 'PATIENT').toUpperCase()
+      : 'WAITING FOR PATIENTS';
+
+    const dormant = document.getElementById('dormant-msg');
+    dormant.style.display = APP.isDormant ? 'flex' : 'none';
+    if (APP.isDormant) ThreeEngine.enterDormant();
+    else               ThreeEngine.exitDormant();
+
+    Odometer.set('ahead-odo', waitingCount);
+    Odometer.set('wait-odo',  waitingCount * avgConsultationTime);
+
+    document.getElementById('status-text').textContent = status.toUpperCase();
+    document.getElementById('total-text').textContent  = `${waitingCount + (servingPatient ? 1 : 0)} REGISTERED`;
+    document.getElementById('total-queue-num').textContent = waitingCount + (servingPatient ? 1 : 0);
+    document.getElementById('avg-time-text').textContent   = avgConsultationTime;
+
+    const spl = document.getElementById('spotlight');
+    spl.className = APP.isDormant ? 'alert' : '';
+
+    updatePips(waitingCount);
+    updatePipeline(waitingPatients);
+    updateTicker(waitingPatients, servingPatient);
+
+    const total = waitingCount + (servingPatient ? 1 : 0);
+    const pct   = total > 0 ? (100 - waitingCount / total * 100) : 0;
+    document.getElementById('progress-bar').style.width = pct + '%';
+
+    renderPersonalised(data);
+    ThreeEngine.buildQueue(waitingPatients, servingPatient);
+
+    document.getElementById('last-update').textContent =
+      'LAST UPDATE: ' + new Date().toLocaleTimeString('en-US', { hour12: false });
+  }
+
+  /* ══════════════════════════════════════════════════
+     PERSONALISED TRACKING
+  ══════════════════════════════════════════════════ */
+  function renderPersonalised(data) {
+    if (!MY_TOKEN) return;
+    const panel   = document.getElementById('my-token-panel');
+    const numEl   = document.getElementById('my-token-num');
+    const posEl   = document.getElementById('my-position-text');
+    const banner  = document.getElementById('my-banner');
+    const yourTurn= document.getElementById('your-turn');
+    const myIdx   = data.waitingPatients.findIndex(p => p.tokenNumber === MY_TOKEN);
+    const isServing = data.servingPatient?.tokenNumber === MY_TOKEN;
+
+    panel.style.display = 'block';
+    numEl.textContent   = String(MY_TOKEN).padStart(3, '0');
+    banner.style.display = 'block';
+
+    if (isServing || data.currentToken === MY_TOKEN) {
+      yourTurn.style.display = 'block';
+      banner.textContent = `// YOUR TOKEN #${String(MY_TOKEN).padStart(3,'0')} IS NOW BEING SERVED`;
+      posEl.textContent  = 'YOU ARE BEING SERVED NOW';
+      flashScreen(true);
+    } else if (myIdx === 0) {
+      yourTurn.style.display = 'none';
+      banner.textContent = `// TOKEN #${String(MY_TOKEN).padStart(3,'0')} — YOU'RE NEXT`;
+      posEl.textContent  = "YOU'RE NEXT IN LINE";
+    } else if (myIdx > 0) {
+      yourTurn.style.display = 'none';
+      const estWait = myIdx * data.avgConsultationTime;
+      banner.textContent = `// TOKEN #${String(MY_TOKEN).padStart(3,'0')} — ${myIdx} AHEAD — ~${estWait} MIN`;
+      posEl.textContent  = `POSITION #${myIdx + 1} — ~${estWait} MIN WAIT`;
+    } else {
+      yourTurn.style.display = 'none';
+      banner.textContent = `// TOKEN #${String(MY_TOKEN).padStart(3,'0')}`;
+      posEl.textContent  = 'NOT IN ACTIVE QUEUE';
+    }
+  }
+
+  /* ══════════════════════════════════════════════════
+     ANIMATIONS
+  ══════════════════════════════════════════════════ */
+  function triggerNextTokenAnimation(newTokenNumber) {
+    ThreeEngine.explodeCenter();
+    const el  = document.getElementById('now-serving-num');
+    const spl = document.getElementById('spotlight');
+    el.classList.add('flash');
+    spl.classList.add('alert');
+    flashScreen(false);
+    setTimeout(() => {
+      el.textContent = String(newTokenNumber).padStart(3, '0');
+      el.classList.remove('flash');
+      spl.classList.remove('alert');
+    }, 420);
+  }
+
+  function addNewTokenTo3DQueue(tokenNumber) {
+    const spl = document.getElementById('spotlight');
+    spl.classList.add('alert');
+    setTimeout(() => spl.classList.remove('alert'), 500);
+
+    const pipeline = document.getElementById('pipeline-preview');
+    const chip = document.createElement('div');
+    chip.className = 'pipe-chip drop-in';
+    chip.style.cssText = `border:1px solid var(--amber);color:var(--amber);`;
+    chip.textContent = String(tokenNumber).padStart(3, '0');
+    if (pipeline.firstChild) pipeline.insertBefore(chip, pipeline.firstChild);
+    else pipeline.appendChild(chip);
+    setTimeout(() => chip.classList.remove('drop-in'), 700);
+  }
+
+  function flashScreen(isCritical) {
+    document.body.style.transition = 'background .08s';
+    document.body.style.background = isCritical
+      ? 'rgba(245,158,11,0.05)'
+      : 'rgba(181,255,62,0.04)';
+    const ui = document.getElementById('ui');
+    ui.classList.add('shake');
+    ui.addEventListener('animationend', () => ui.classList.remove('shake'), { once: true });
+    setTimeout(() => { document.body.style.background = ''; }, 450);
+  }
+
+  /* ══════════════════════════════════════════════════
+     CLOCK
+  ══════════════════════════════════════════════════ */
+  function startClock() {
+    const el = document.getElementById('live-clock');
+    const tick = () => {
+      const n = new Date();
+      el.textContent =
+        n.toLocaleTimeString('en-US', { hour12: false }) +
+        ' // ' +
+        n.toLocaleDateString('en-US', { weekday: 'short', day: '2-digit', month: 'short' }).toUpperCase();
+    };
+    tick(); setInterval(tick, 1000);
+  }
+
+  /* ══════════════════════════════════════════════════
+     CURSOR
+  ══════════════════════════════════════════════════ */
+  function initCursor() {
+    const dot = document.getElementById('cur-dot');
+    const ring = document.getElementById('cur-ring');
+    let mx = -100, my = -100, rx = -100, ry = -100;
+    document.addEventListener('mousemove', e => { mx = e.clientX; my = e.clientY; dot.style.left = mx+'px'; dot.style.top = my+'px'; });
+    (function anim() {
+      rx += (mx - rx) * 0.12; ry += (my - ry) * 0.12;
+      ring.style.left = rx+'px'; ring.style.top = ry+'px';
+      requestAnimationFrame(anim);
+    })();
+  }
+
+  /* ══════════════════════════════════════════════════
+     HELPER
+  ══════════════════════════════════════════════════ */
+  function escHTML(str) {
+    return String(str).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+  }
+
+  /* ══════════════════════════════════════════════════
+     SOCKET.IO
+  ══════════════════════════════════════════════════ */
+  function initSocket() {
+    let socket;
+    const badge = document.getElementById('conn-badge');
+    function setConn(cls, text) { badge.className = 'conn-badge ' + cls; badge.textContent = '● ' + text; }
+
+    try {
+      socket = io(window.location.origin, { transports: ['websocket','polling'], reconnectionAttempts: 8, timeout: 6000 });
+
+      socket.on('connect', () => {
+        setConn('connected', 'Connected');
+        socket.emit('joinClinic', CLINIC_ID);
+        fetchStatus();
+      });
+      socket.on('disconnect',    () => setConn('disconnected', 'Disconnected'));
+      socket.on('connect_error', () => setConn('disconnected', 'Offline — Demo'));
+
+      socket.on('queueUpdated', data => {
+        const prev = APP.currentToken;
+        render(data);
+        if (data.lastIssuedToken > prev) addNewTokenTo3DQueue(data.lastIssuedToken);
+      });
+
+      socket.on('currentTokenChanged', data => {
+        const newToken = data.currentToken;
+        if (newToken && newToken !== APP.currentToken && newToken > 0) triggerNextTokenAnimation(newToken);
+        render(data);
+        if (MY_TOKEN && newToken === MY_TOKEN) flashScreen(true);
+      });
+
+      socket.on('waitTimeUpdated', data => render(data));
+
+    } catch(e) {
+      console.warn('Socket.IO not available — demo mode.');
+      setConn('disconnected', 'Demo Mode');
+    }
+  }
+
+  /* ══════════════════════════════════════════════════
+     REST API
+  ══════════════════════════════════════════════════ */
+  async function fetchStatus() {
+    try {
+      const res  = await fetch(`/api/queue/status?clinicId=${encodeURIComponent(CLINIC_ID)}`);
+      const json = await res.json();
+      if (json.success && json.data) render(json.data);
+    } catch(e) { console.warn('Could not fetch queue state:', e); }
+  }
+
+  /* ══════════════════════════════════════════════════
+     DEMO CONTROLS
+  ══════════════════════════════════════════════════ */
+  const DemoControls = (() => {
+    let counter = 5;
+    const baseQueue = () => ({
+      currentToken:       counter,
+      servingPatient:     { tokenNumber: counter, name: `PATIENT_${counter}`, status: 'serving' },
+      waitingPatients:    Array.from({ length: Math.max(0, 3 - (counter % 4)) }, (_, i) => ({
+        tokenNumber: counter + i + 1, name: `PATIENT_${counter + i + 1}`, status: 'waiting',
+      })),
+      avgConsultationTime: 5, status: 'active',
+      waitingCount: Math.max(0, 3 - (counter % 4)),
+      lastIssuedToken: counter + 3,
+    });
+
+    function callNext() {
+      counter++;
+      triggerNextTokenAnimation(counter);
+      setTimeout(() => render(baseQueue()), 300);
+    }
+    function addToken() {
+      const newNum = counter + 10;
+      addNewTokenTo3DQueue(newNum);
+      const q = baseQueue();
+      q.waitingPatients.push({ tokenNumber: newNum, name: `PATIENT_${newNum}`, status: 'waiting' });
+      q.waitingCount++; q.lastIssuedToken = newNum;
+      render(q);
+    }
+    function dormant() {
+      render({ currentToken:0, servingPatient:null, waitingPatients:[], waitingCount:0, avgConsultationTime:5, status:'active', lastIssuedToken:0 });
+    }
+    return { callNext, addToken, dormant };
+  })();
+
+  /* ══════════════════════════════════════════════════
+     BOOT
+  ══════════════════════════════════════════════════ */
+  window.addEventListener('DOMContentLoaded', () => {
+    ThreeEngine.init();
+    startClock();
+    initCursor();
+
+    Odometer.set('ahead-odo', 0);
+    Odometer.set('wait-odo',  0);
+
+    document.getElementById('clinic-label').textContent = CLINIC_ID.toUpperCase();
+
+    if (MY_TOKEN) {
+      const b = document.getElementById('my-banner');
+      b.style.display = 'block';
+      b.textContent   = `// TRACKING TOKEN #${String(MY_TOKEN).padStart(3,'0')}`;
+    }
+
+    initSocket();
+
+    setTimeout(() => {
+      const badge = document.getElementById('conn-badge');
+      if (!badge.classList.contains('connected')) DemoControls.callNext();
+    }, 1800);
+  });
+  </script>
+</body>
+</html>

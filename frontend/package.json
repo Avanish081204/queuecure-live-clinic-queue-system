@@ -1,0 +1,11 @@
+{
+  "name": "queuecure-frontend",
+  "version": "1.0.0",
+  "description": "QueueCure Frontend — Static files served by the Express backend",
+  "scripts": {
+    "dev": "echo 'Frontend is served by the backend at http://localhost:5000'",
+    "lint": "echo 'No build step required for vanilla frontend'"
+  },
+  "dependencies": {},
+  "devDependencies": {}
+}

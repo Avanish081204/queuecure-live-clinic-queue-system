@@ -1,0 +1,1688 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>QueueCure '26 — The Future of Clinic Queues</title>
+  <meta name="description" content="QueueCure '26: Real-time clinic queue management that's so fast, waiting feels instant." />
+
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Inter:ital,wght@0,100;0,200;0,300;0,400;0,500;0,600;0,700;0,800;0,900;1,300&family=Space+Grotesk:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;700;800&display=swap" rel="stylesheet" />
+
+  <style>
+    /* ══════════════════════════════════════════════════
+       RESET & BASE
+    ══════════════════════════════════════════════════ */
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    html { scroll-behavior: smooth; }
+    
+    :root {
+      --ink:    #04060d;
+      --paper:  #f0ede8;
+      --acid:   #b5ff3e;
+      --violet: #7c3aed;
+      --indigo: #4f46e5;
+      --teal:   #0d9488;
+      --rose:   #e11d48;
+      --glass:  rgba(255,255,255,0.03);
+      --glow:   rgba(181,255,62,0.4);
+    }
+
+    body {
+      font-family: 'Space Grotesk', 'Inter', sans-serif;
+      background: var(--ink);
+      color: #fff;
+      overflow-x: hidden;
+      cursor: none;
+    }
+
+    /* ══════════════════════════════════════════════════
+       CUSTOM MAGNETIC CURSOR
+    ══════════════════════════════════════════════════ */
+    #cursor-dot {
+      position: fixed;
+      width: 8px; height: 8px;
+      background: var(--acid);
+      border-radius: 50%;
+      pointer-events: none;
+      z-index: 9999;
+      transform: translate(-50%,-50%);
+      transition: width 0.2s, height 0.2s, background 0.2s;
+      mix-blend-mode: difference;
+    }
+    #cursor-ring {
+      position: fixed;
+      width: 40px; height: 40px;
+      border: 1.5px solid rgba(181,255,62,0.5);
+      border-radius: 50%;
+      pointer-events: none;
+      z-index: 9998;
+      transform: translate(-50%,-50%);
+      transition: width 0.35s cubic-bezier(0.25,0.46,0.45,0.94),
+                  height 0.35s cubic-bezier(0.25,0.46,0.45,0.94),
+                  border-color 0.2s;
+    }
+    body:has(a:hover) #cursor-ring,
+    body:has(button:hover) #cursor-ring {
+      width: 60px; height: 60px;
+      border-color: var(--acid);
+    }
+
+    /* ══════════════════════════════════════════════════
+       NOISE GRAIN OVERLAY
+    ══════════════════════════════════════════════════ */
+    #grain {
+      position: fixed;
+      inset: -200%;
+      width: 400%; height: 400%;
+      background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 256 256' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='noise'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23noise)' opacity='1'/%3E%3C/svg%3E");
+      opacity: 0.035;
+      pointer-events: none;
+      z-index: 9997;
+      animation: grainShift 0.5s steps(1) infinite;
+    }
+    @keyframes grainShift {
+      0%   { transform: translate(0,0); }
+      10%  { transform: translate(-5%,-5%); }
+      20%  { transform: translate(-10%,5%); }
+      30%  { transform: translate(5%,-10%); }
+      40%  { transform: translate(-5%,15%); }
+      50%  { transform: translate(-10%,5%); }
+      60%  { transform: translate(15%,0); }
+      70%  { transform: translate(0,10%); }
+      80%  { transform: translate(-15%,0); }
+      90%  { transform: translate(10%,5%); }
+      100% { transform: translate(5%,0); }
+    }
+
+    /* ══════════════════════════════════════════════════
+       WEBGL CANVAS
+    ══════════════════════════════════════════════════ */
+    #bg-canvas {
+      position: fixed;
+      inset: 0;
+      z-index: 0;
+      pointer-events: none;
+    }
+
+    /* ══════════════════════════════════════════════════
+       NAVIGATION
+    ══════════════════════════════════════════════════ */
+    .nav {
+      position: fixed;
+      top: 0; left: 0; right: 0;
+      z-index: 100;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 1.5rem 3rem;
+      mix-blend-mode: difference;
+    }
+    .nav__logo {
+      font-size: 1rem;
+      font-weight: 700;
+      letter-spacing: 0.12em;
+      text-transform: uppercase;
+      color: #fff;
+      text-decoration: none;
+    }
+    .nav__links {
+      display: flex;
+      gap: 2rem;
+      list-style: none;
+    }
+    .nav__links a {
+      font-size: 0.8rem;
+      font-weight: 500;
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
+      color: rgba(255,255,255,0.55);
+      text-decoration: none;
+      transition: color 0.2s;
+    }
+    .nav__links a:hover { color: #fff; }
+
+    /* ══════════════════════════════════════════════════
+       SECTION 1 — FULL-BLEED HERO
+    ══════════════════════════════════════════════════ */
+    .hero {
+      position: relative;
+      min-height: 100vh;
+      display: flex;
+      flex-direction: column;
+      justify-content: flex-end;
+      padding: 0 3rem 4rem;
+      z-index: 2;
+      overflow: hidden;
+    }
+
+    /* Giant background number */
+    .hero__bg-number {
+      position: absolute;
+      right: -0.05em;
+      bottom: -0.1em;
+      font-size: clamp(18rem, 40vw, 38rem);
+      font-weight: 900;
+      line-height: 0.8;
+      color: transparent;
+      -webkit-text-stroke: 1px rgba(255,255,255,0.04);
+      pointer-events: none;
+      user-select: none;
+      font-family: 'Space Grotesk', sans-serif;
+      letter-spacing: -0.06em;
+    }
+
+    .hero__eyebrow {
+      display: flex;
+      align-items: center;
+      gap: 0.75rem;
+      margin-bottom: 1.5rem;
+    }
+    .hero__eyebrow-line {
+      width: 40px; height: 1px;
+      background: var(--acid);
+    }
+    .hero__eyebrow-text {
+      font-size: 0.75rem;
+      font-weight: 600;
+      letter-spacing: 0.14em;
+      text-transform: uppercase;
+      color: var(--acid);
+    }
+
+    .hero__title {
+      font-size: clamp(3.5rem, 9vw, 9rem);
+      font-weight: 900;
+      line-height: 0.92;
+      letter-spacing: -0.04em;
+      max-width: 14ch;
+      font-family: 'Space Grotesk', sans-serif;
+    }
+    .hero__title em {
+      font-style: italic;
+      font-weight: 300;
+      color: rgba(255,255,255,0.4);
+    }
+    .hero__title .accent {
+      display: inline-block;
+      position: relative;
+    }
+    .hero__title .accent::after {
+      content: '';
+      position: absolute;
+      bottom: 0.08em;
+      left: 0; right: 0;
+      height: 0.06em;
+      background: var(--acid);
+    }
+
+    .hero__bottom {
+      display: flex;
+      align-items: flex-end;
+      justify-content: space-between;
+      margin-top: 3rem;
+      gap: 2rem;
+      flex-wrap: wrap;
+    }
+    .hero__desc {
+      max-width: 36ch;
+      font-size: 1rem;
+      color: rgba(255,255,255,0.45);
+      line-height: 1.7;
+      font-weight: 300;
+    }
+    .hero__cta-group {
+      display: flex;
+      gap: 1rem;
+      align-items: center;
+      flex-wrap: wrap;
+    }
+
+    /* Pill CTA */
+    .btn-pill {
+      display: inline-flex;
+      align-items: center;
+      gap: 0.6rem;
+      padding: 0.9rem 1.8rem;
+      border-radius: 999px;
+      font-size: 0.875rem;
+      font-weight: 600;
+      letter-spacing: 0.04em;
+      text-decoration: none;
+      transition: all 0.25s cubic-bezier(0.25,0.46,0.45,0.94);
+      cursor: none;
+      border: none;
+      outline: none;
+    }
+    .btn-pill--acid {
+      background: var(--acid);
+      color: var(--ink);
+    }
+    .btn-pill--acid:hover {
+      background: #c8ff5c;
+      transform: scale(1.04);
+      box-shadow: 0 0 40px rgba(181,255,62,0.5);
+    }
+    .btn-pill--outline {
+      background: transparent;
+      color: rgba(255,255,255,0.6);
+      border: 1px solid rgba(255,255,255,0.15);
+    }
+    .btn-pill--outline:hover {
+      color: #fff;
+      border-color: rgba(255,255,255,0.4);
+      transform: scale(1.04);
+    }
+    .btn-pill__arrow {
+      width: 18px; height: 18px;
+      background: var(--ink);
+      border-radius: 50%;
+      display: flex; align-items: center; justify-content: center;
+      font-size: 0.7rem;
+      font-weight: 900;
+      transition: transform 0.2s;
+    }
+    .btn-pill--acid:hover .btn-pill__arrow {
+      transform: translateX(3px);
+    }
+
+    /* Scroll indicator */
+    .scroll-hint {
+      position: absolute;
+      bottom: 2rem;
+      left: 50%;
+      transform: translateX(-50%);
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 0.5rem;
+      opacity: 0.35;
+    }
+    .scroll-hint span {
+      font-size: 0.65rem;
+      letter-spacing: 0.14em;
+      text-transform: uppercase;
+      writing-mode: vertical-rl;
+    }
+    .scroll-hint__line {
+      width: 1px; height: 50px;
+      background: linear-gradient(to bottom, rgba(255,255,255,0.5), transparent);
+      animation: scrollPulse 2s ease-in-out infinite;
+    }
+    @keyframes scrollPulse {
+      0%,100% { transform: scaleY(1); opacity: 1; }
+      50%      { transform: scaleY(0.5); opacity: 0.4; }
+    }
+
+    /* ══════════════════════════════════════════════════
+       MARQUEE TICKER
+    ══════════════════════════════════════════════════ */
+    .ticker {
+      position: relative;
+      z-index: 2;
+      background: var(--acid);
+      padding: 0.85rem 0;
+      overflow: hidden;
+      border-top: 1px solid rgba(0,0,0,0.1);
+    }
+    .ticker__track {
+      display: flex;
+      width: max-content;
+      animation: tickerScroll 30s linear infinite;
+    }
+    .ticker__item {
+      display: flex;
+      align-items: center;
+      gap: 1.5rem;
+      padding: 0 2rem;
+      font-size: 0.8rem;
+      font-weight: 700;
+      letter-spacing: 0.1em;
+      text-transform: uppercase;
+      color: var(--ink);
+      white-space: nowrap;
+    }
+    .ticker__sep {
+      opacity: 0.3;
+    }
+    @keyframes tickerScroll {
+      from { transform: translateX(0); }
+      to   { transform: translateX(-50%); }
+    }
+
+    /* ══════════════════════════════════════════════════
+       SECTION 2 — BENTO GRID
+    ══════════════════════════════════════════════════ */
+    .bento {
+      position: relative;
+      z-index: 2;
+      padding: 6rem 3rem;
+    }
+    .bento__label {
+      display: flex;
+      align-items: center;
+      gap: 0.75rem;
+      margin-bottom: 4rem;
+    }
+    .bento__label-num {
+      font-size: 0.7rem;
+      font-family: 'JetBrains Mono', monospace;
+      color: var(--acid);
+      opacity: 0.7;
+    }
+    .bento__label-text {
+      font-size: 0.75rem;
+      letter-spacing: 0.12em;
+      text-transform: uppercase;
+      color: rgba(255,255,255,0.4);
+    }
+
+    .bento__grid {
+      display: grid;
+      grid-template-columns: repeat(12, 1fr);
+      grid-template-rows: repeat(3, auto);
+      gap: 1.5rem;
+    }
+
+    .bcard {
+      background: rgba(255,255,255,0.03);
+      border: 1px solid rgba(255,255,255,0.06);
+      border-radius: 1.5rem;
+      padding: 2.5rem;
+      position: relative;
+      overflow: hidden;
+      transition: border-color 0.3s, background 0.3s;
+    }
+    .bcard:hover {
+      border-color: rgba(255,255,255,0.12);
+      background: rgba(255,255,255,0.05);
+    }
+    .bcard::before {
+      content: '';
+      position: absolute;
+      inset: 0;
+      background: radial-gradient(circle at var(--mx,50%) var(--my,50%), rgba(181,255,62,0.06) 0%, transparent 60%);
+      opacity: 0;
+      transition: opacity 0.3s;
+      pointer-events: none;
+    }
+    .bcard:hover::before { opacity: 1; }
+
+    /* Grid placements */
+    .bcard--a { grid-column: 1 / 8; grid-row: 1; }
+    .bcard--b { grid-column: 8 / 13; grid-row: 1; }
+    .bcard--c { grid-column: 1 / 5; grid-row: 2; }
+    .bcard--d { grid-column: 5 / 9; grid-row: 2; }
+    .bcard--e { grid-column: 9 / 13; grid-row: 2; }
+    .bcard--f { grid-column: 1 / 13; grid-row: 3; }
+
+    .bcard__tag {
+      display: inline-flex;
+      align-items: center;
+      gap: 0.4rem;
+      padding: 0.3rem 0.8rem;
+      border-radius: 999px;
+      font-size: 0.7rem;
+      font-weight: 700;
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
+      background: rgba(181,255,62,0.1);
+      color: var(--acid);
+      border: 1px solid rgba(181,255,62,0.2);
+      margin-bottom: 1.5rem;
+    }
+
+    .bcard__huge-num {
+      font-size: clamp(4rem, 8vw, 7rem);
+      font-weight: 900;
+      letter-spacing: -0.05em;
+      line-height: 1;
+      font-family: 'Space Grotesk', sans-serif;
+      background: linear-gradient(135deg, #fff 0%, rgba(255,255,255,0.3) 100%);
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+      background-clip: text;
+    }
+
+    .bcard__title {
+      font-size: 1.4rem;
+      font-weight: 700;
+      letter-spacing: -0.02em;
+      margin-bottom: 0.75rem;
+      line-height: 1.2;
+    }
+    .bcard__desc {
+      font-size: 0.9rem;
+      color: rgba(255,255,255,0.38);
+      line-height: 1.7;
+      font-weight: 300;
+      max-width: 45ch;
+    }
+
+    /* Live queue visualizer inside bcard */
+    .queue-vis {
+      display: flex;
+      align-items: flex-end;
+      gap: 0.4rem;
+      height: 60px;
+      margin-top: 1.5rem;
+    }
+    .queue-vis__bar {
+      flex: 1;
+      border-radius: 4px 4px 0 0;
+      background: linear-gradient(to top, var(--acid), rgba(181,255,62,0.2));
+      animation: barPulse var(--dur, 2s) ease-in-out infinite;
+      animation-delay: var(--del, 0s);
+    }
+    @keyframes barPulse {
+      0%,100% { transform: scaleY(1); }
+      50%      { transform: scaleY(0.3); }
+    }
+
+    /* Token orbit inside bcard--b */
+    .token-orbit {
+      position: relative;
+      width: 120px; height: 120px;
+      margin: 1rem auto 0;
+    }
+    .token-orbit__center {
+      position: absolute;
+      inset: 50%;
+      transform: translate(-50%,-50%);
+      width: 60px; height: 60px;
+      border-radius: 50%;
+      background: linear-gradient(135deg, var(--indigo), var(--violet));
+      display: flex; align-items: center; justify-content: center;
+      font-size: 1.5rem;
+      font-weight: 900;
+      font-family: 'JetBrains Mono', monospace;
+      box-shadow: 0 0 30px rgba(124,58,237,0.5);
+    }
+    .token-orbit__ring {
+      position: absolute;
+      inset: 0;
+      border-radius: 50%;
+      border: 1px dashed rgba(181,255,62,0.2);
+      animation: orbitSpin 8s linear infinite;
+    }
+    .token-orbit__dot {
+      position: absolute;
+      width: 10px; height: 10px;
+      border-radius: 50%;
+      background: var(--acid);
+      top: 0; left: 50%;
+      transform: translateX(-50%) translateY(-50%);
+      box-shadow: 0 0 12px var(--acid);
+    }
+    @keyframes orbitSpin {
+      to { transform: rotate(360deg); }
+    }
+
+    /* Full-width feature strip */
+    .bcard--f .bcard__inner-flex {
+      display: grid;
+      grid-template-columns: 1fr 1fr 1fr;
+      gap: 3rem;
+      align-items: center;
+    }
+    .tech-pill {
+      display: inline-flex;
+      align-items: center;
+      gap: 0.4rem;
+      padding: 0.4rem 0.9rem;
+      border-radius: 999px;
+      font-size: 0.75rem;
+      font-weight: 600;
+      font-family: 'JetBrains Mono', monospace;
+      border: 1px solid rgba(255,255,255,0.1);
+      color: rgba(255,255,255,0.5);
+      margin: 0.25rem;
+    }
+    .tech-pill__dot {
+      width: 6px; height: 6px;
+      border-radius: 50%;
+      background: var(--acid);
+      box-shadow: 0 0 6px var(--acid);
+    }
+
+    /* ══════════════════════════════════════════════════
+       SECTION 3 — FULL-BLEED DARK STATEMENT
+    ══════════════════════════════════════════════════ */
+    .statement {
+      position: relative;
+      z-index: 2;
+      padding: 10rem 3rem;
+      text-align: center;
+      overflow: hidden;
+      border-top: 1px solid rgba(255,255,255,0.05);
+      border-bottom: 1px solid rgba(255,255,255,0.05);
+    }
+    .statement__bg-text {
+      position: absolute;
+      inset: 0;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: clamp(6rem, 18vw, 20rem);
+      font-weight: 900;
+      color: transparent;
+      -webkit-text-stroke: 1px rgba(181,255,62,0.04);
+      pointer-events: none;
+      user-select: none;
+      letter-spacing: -0.06em;
+      font-family: 'Space Grotesk', sans-serif;
+    }
+    .statement__content {
+      position: relative;
+      z-index: 1;
+    }
+    .statement__title {
+      font-size: clamp(2.5rem, 6vw, 6rem);
+      font-weight: 900;
+      letter-spacing: -0.04em;
+      line-height: 1.0;
+      font-family: 'Space Grotesk', sans-serif;
+      margin-bottom: 2rem;
+    }
+    .statement__title .highlight {
+      color: var(--acid);
+    }
+    .statement__sub {
+      font-size: 1.1rem;
+      color: rgba(255,255,255,0.35);
+      max-width: 42ch;
+      margin: 0 auto 3rem;
+      line-height: 1.7;
+      font-weight: 300;
+    }
+    .statement__cta-row {
+      display: flex;
+      gap: 1.25rem;
+      justify-content: center;
+      flex-wrap: wrap;
+    }
+
+    /* ══════════════════════════════════════════════════
+       SECTION 4 — HORIZONTAL SCROLL SHOWCASE
+    ══════════════════════════════════════════════════ */
+    .showcase {
+      position: relative;
+      z-index: 2;
+      padding: 6rem 0 6rem 3rem;
+      overflow: hidden;
+    }
+    .showcase__header {
+      margin-bottom: 3rem;
+      display: flex;
+      align-items: baseline;
+      justify-content: space-between;
+      padding-right: 3rem;
+    }
+    .showcase__title {
+      font-size: clamp(1.8rem, 4vw, 3rem);
+      font-weight: 700;
+      letter-spacing: -0.03em;
+    }
+    .showcase__count {
+      font-size: 0.8rem;
+      color: rgba(255,255,255,0.3);
+      font-family: 'JetBrains Mono', monospace;
+    }
+
+    .showcase__track {
+      display: flex;
+      gap: 1.5rem;
+      overflow-x: auto;
+      padding-bottom: 1.5rem;
+      scrollbar-width: none;
+      -ms-overflow-style: none;
+      scroll-snap-type: x mandatory;
+    }
+    .showcase__track::-webkit-scrollbar { display: none; }
+
+    .scard {
+      flex-shrink: 0;
+      width: 340px;
+      height: 440px;
+      border-radius: 1.5rem;
+      position: relative;
+      overflow: hidden;
+      scroll-snap-align: start;
+      border: 1px solid rgba(255,255,255,0.06);
+      transition: transform 0.3s;
+    }
+    .scard:hover { transform: translateY(-6px); }
+    .scard__bg {
+      position: absolute;
+      inset: 0;
+    }
+    .scard--1 .scard__bg { background: linear-gradient(135deg, #0f0f1a, #1a0a2e); }
+    .scard--2 .scard__bg { background: linear-gradient(135deg, #020a06, #042218); }
+    .scard--3 .scard__bg { background: linear-gradient(135deg, #0a0a00, #1a1200); }
+    .scard--4 .scard__bg { background: linear-gradient(135deg, #0a0005, #1f0020); }
+    .scard--5 .scard__bg { background: linear-gradient(135deg, #00080f, #001a2e); }
+
+    .scard__content {
+      position: absolute;
+      inset: 0;
+      padding: 2rem;
+      display: flex;
+      flex-direction: column;
+      justify-content: space-between;
+    }
+    .scard__icon {
+      width: 52px; height: 52px;
+      border-radius: 1rem;
+      display: flex; align-items: center; justify-content: center;
+      font-size: 1.5rem;
+    }
+    .scard--1 .scard__icon { background: rgba(124,58,237,0.2); border: 1px solid rgba(124,58,237,0.3); }
+    .scard--2 .scard__icon { background: rgba(13,148,136,0.2); border: 1px solid rgba(13,148,136,0.3); }
+    .scard--3 .scard__icon { background: rgba(245,158,11,0.2); border: 1px solid rgba(245,158,11,0.3); }
+    .scard--4 .scard__icon { background: rgba(225,29,72,0.2);  border: 1px solid rgba(225,29,72,0.3); }
+    .scard--5 .scard__icon { background: rgba(79,70,229,0.2);  border: 1px solid rgba(79,70,229,0.3); }
+
+    .scard__num {
+      font-size: 0.7rem;
+      font-family: 'JetBrains Mono', monospace;
+      color: rgba(255,255,255,0.2);
+      letter-spacing: 0.08em;
+    }
+    .scard__title {
+      font-size: 1.4rem;
+      font-weight: 700;
+      letter-spacing: -0.02em;
+      line-height: 1.2;
+      margin-bottom: 0.6rem;
+    }
+    .scard__desc {
+      font-size: 0.85rem;
+      color: rgba(255,255,255,0.4);
+      line-height: 1.65;
+      font-weight: 300;
+    }
+
+    /* Glowing orb inside scards */
+    .scard__orb {
+      position: absolute;
+      border-radius: 50%;
+      filter: blur(40px);
+      pointer-events: none;
+    }
+    .scard--1 .scard__orb { width: 150px; height: 150px; background: rgba(124,58,237,0.3); right: -30px; top: -30px; }
+    .scard--2 .scard__orb { width: 120px; height: 120px; background: rgba(13,148,136,0.3); right: -20px; bottom: -20px; }
+    .scard--3 .scard__orb { width: 140px; height: 140px; background: rgba(245,158,11,0.2); left: 50%; top: 30%; }
+    .scard--4 .scard__orb { width: 160px; height: 160px; background: rgba(225,29,72,0.25); left: -40px; bottom: -40px; }
+    .scard--5 .scard__orb { width: 130px; height: 130px; background: rgba(79,70,229,0.3); right: -20px; top: 50%; }
+
+    /* ══════════════════════════════════════════════════
+       SECTION 5 — LIVE COUNTER STRIP
+    ══════════════════════════════════════════════════ */
+    .counter-strip {
+      position: relative;
+      z-index: 2;
+      padding: 5rem 3rem;
+      border-top: 1px solid rgba(255,255,255,0.05);
+    }
+    .counter-strip__grid {
+      display: grid;
+      grid-template-columns: repeat(4, 1fr);
+      gap: 0;
+    }
+    .counter-item {
+      padding: 2.5rem;
+      border-right: 1px solid rgba(255,255,255,0.06);
+      position: relative;
+    }
+    .counter-item:last-child { border-right: none; }
+    .counter-item::before {
+      content: '';
+      position: absolute;
+      top: 0; left: 0; right: 0;
+      height: 2px;
+      background: var(--acid);
+      transform: scaleX(0);
+      transform-origin: left;
+      transition: transform 0.8s cubic-bezier(0.25,0.46,0.45,0.94);
+    }
+    .counter-item.in-view::before { transform: scaleX(1); }
+    .counter-item__value {
+      font-size: clamp(2.5rem, 5vw, 4.5rem);
+      font-weight: 900;
+      letter-spacing: -0.04em;
+      font-family: 'Space Grotesk', sans-serif;
+      color: #fff;
+      line-height: 1;
+      margin-bottom: 0.5rem;
+    }
+    .counter-item__value span {
+      color: var(--acid);
+    }
+    .counter-item__label {
+      font-size: 0.8rem;
+      color: rgba(255,255,255,0.3);
+      text-transform: uppercase;
+      letter-spacing: 0.1em;
+      font-weight: 500;
+    }
+
+    /* ══════════════════════════════════════════════════
+       SECTION 6 — FOOTER / CTA
+    ══════════════════════════════════════════════════ */
+    .final-cta {
+      position: relative;
+      z-index: 2;
+      padding: 8rem 3rem;
+      border-top: 1px solid rgba(255,255,255,0.05);
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      text-align: center;
+    }
+    .final-cta__overtitle {
+      font-size: 0.75rem;
+      letter-spacing: 0.14em;
+      text-transform: uppercase;
+      color: var(--acid);
+      margin-bottom: 2rem;
+    }
+    .final-cta__title {
+      font-size: clamp(3rem, 7vw, 7rem);
+      font-weight: 900;
+      letter-spacing: -0.04em;
+      line-height: 0.95;
+      font-family: 'Space Grotesk', sans-serif;
+      margin-bottom: 3rem;
+    }
+    .final-cta__title em {
+      font-style: normal;
+      color: var(--acid);
+    }
+    .final-cta__btns {
+      display: flex;
+      gap: 1rem;
+      flex-wrap: wrap;
+      justify-content: center;
+    }
+
+    .footer-bar {
+      position: relative;
+      z-index: 2;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 2rem 3rem;
+      border-top: 1px solid rgba(255,255,255,0.05);
+      font-size: 0.8rem;
+      color: rgba(255,255,255,0.2);
+    }
+    .footer-bar a { color: rgba(255,255,255,0.3); text-decoration: none; }
+    .footer-bar a:hover { color: #fff; }
+
+    /* ══════════════════════════════════════════════════
+       GLITCH TEXT EFFECT
+    ══════════════════════════════════════════════════ */
+    .glitch {
+      position: relative;
+      display: inline-block;
+    }
+    .glitch::before,
+    .glitch::after {
+      content: attr(data-text);
+      position: absolute;
+      top: 0; left: 0;
+      width: 100%;
+      height: 100%;
+      clip-path: polygon(0 0, 100% 0, 100% 33%, 0 33%);
+    }
+    .glitch::before {
+      color: var(--acid);
+      animation: glitch1 4s infinite linear;
+    }
+    .glitch::after {
+      color: #ff3ea5;
+      animation: glitch2 4s infinite linear;
+    }
+    @keyframes glitch1 {
+      0%,94%,100% { transform: none; clip-path: polygon(0 0, 100% 0, 100% 0, 0 0); }
+      95%          { transform: skewX(-4deg) translateX(-4px); clip-path: polygon(0 20%, 100% 20%, 100% 40%, 0 40%); }
+      97%          { transform: skewX(2deg) translateX(3px); clip-path: polygon(0 60%, 100% 60%, 100% 80%, 0 80%); }
+    }
+    @keyframes glitch2 {
+      0%,96%,100% { transform: none; clip-path: polygon(0 0, 100% 0, 100% 0, 0 0); }
+      97%          { transform: skewX(3deg) translateX(4px); clip-path: polygon(0 40%, 100% 40%, 100% 55%, 0 55%); }
+      99%          { transform: skewX(-2deg) translateX(-2px); clip-path: polygon(0 70%, 100% 70%, 100% 90%, 0 90%); }
+    }
+
+    /* ══════════════════════════════════════════════════
+       FLOATING TOKEN CHIP
+    ══════════════════════════════════════════════════ */
+    .token-chip {
+      display: inline-flex;
+      align-items: center;
+      gap: 0.5rem;
+      padding: 0.5rem 1rem 0.5rem 0.5rem;
+      background: rgba(255,255,255,0.05);
+      border: 1px solid rgba(255,255,255,0.1);
+      border-radius: 999px;
+      backdrop-filter: blur(10px);
+    }
+    .token-chip__badge {
+      width: 32px; height: 32px;
+      border-radius: 50%;
+      background: linear-gradient(135deg, var(--indigo), var(--violet));
+      display: flex; align-items: center; justify-content: center;
+      font-size: 0.75rem;
+      font-weight: 800;
+      font-family: 'JetBrains Mono', monospace;
+      box-shadow: 0 0 12px rgba(124,58,237,0.5);
+    }
+    .token-chip__text {
+      font-size: 0.8rem;
+      font-weight: 500;
+      color: rgba(255,255,255,0.7);
+    }
+    .token-chip__status {
+      width: 7px; height: 7px;
+      border-radius: 50%;
+      background: var(--acid);
+      box-shadow: 0 0 8px var(--acid);
+      animation: chipPulse 2s ease-in-out infinite;
+    }
+    @keyframes chipPulse {
+      0%,100% { opacity: 1; transform: scale(1); }
+      50%      { opacity: 0.5; transform: scale(0.7); }
+    }
+
+    /* ══════════════════════════════════════════════════
+       ANIMATED BACKGROUND BLOBS
+    ══════════════════════════════════════════════════ */
+    .blob-container {
+      position: fixed;
+      inset: 0;
+      z-index: 1;
+      pointer-events: none;
+      overflow: hidden;
+    }
+    .blob {
+      position: absolute;
+      border-radius: 50%;
+      filter: blur(100px);
+      opacity: 0.15;
+      animation: blobFloat var(--dur) ease-in-out infinite alternate;
+    }
+    .blob--1 {
+      width: 600px; height: 600px;
+      background: var(--indigo);
+      top: -200px; left: -200px;
+      --dur: 12s;
+    }
+    .blob--2 {
+      width: 500px; height: 500px;
+      background: var(--teal);
+      bottom: -100px; right: -100px;
+      --dur: 15s;
+      animation-direction: alternate-reverse;
+    }
+    .blob--3 {
+      width: 400px; height: 400px;
+      background: var(--violet);
+      top: 40%; left: 50%;
+      --dur: 10s;
+    }
+    @keyframes blobFloat {
+      from { transform: translate(0, 0) scale(1); }
+      to   { transform: translate(80px, -60px) scale(1.1); }
+    }
+
+    /* ══════════════════════════════════════════════════
+       RESPONSIVE
+    ══════════════════════════════════════════════════ */
+    @media (max-width: 1024px) {
+      .bento__grid { grid-template-columns: repeat(6, 1fr); }
+      .bcard--a { grid-column: 1 / 7; }
+      .bcard--b { grid-column: 1 / 7; }
+      .bcard--c { grid-column: 1 / 3; }
+      .bcard--d { grid-column: 3 / 5; }
+      .bcard--e { grid-column: 5 / 7; }
+      .bcard--f { grid-column: 1 / 7; }
+      .bcard--f .bcard__inner-flex { grid-template-columns: 1fr 1fr; }
+      .counter-strip__grid { grid-template-columns: repeat(2, 1fr); }
+      .counter-item { border-bottom: 1px solid rgba(255,255,255,0.06); }
+    }
+    @media (max-width: 768px) {
+      .nav { padding: 1.25rem 1.5rem; }
+      .nav__links { display: none; }
+      .hero { padding: 0 1.5rem 3rem; }
+      .hero__bg-number { font-size: 40vw; }
+      .bento { padding: 4rem 1.5rem; }
+      .bento__grid { display: flex; flex-direction: column; }
+      .showcase { padding: 4rem 0 4rem 1.5rem; }
+      .counter-strip { padding: 3rem 1.5rem; }
+      .counter-strip__grid { grid-template-columns: repeat(2, 1fr); }
+      .counter-item { padding: 1.5rem; }
+      .final-cta { padding: 5rem 1.5rem; }
+      .footer-bar { padding: 1.5rem; flex-direction: column; gap: 0.5rem; text-align: center; }
+      .bcard--f .bcard__inner-flex { grid-template-columns: 1fr; gap: 1.5rem; }
+    }
+
+    /* ══════════════════════════════════════════════════
+       SCROLL REVEAL
+    ══════════════════════════════════════════════════ */
+    .reveal {
+      opacity: 0;
+      transform: translateY(30px);
+      transition: opacity 0.7s cubic-bezier(0.25,0.46,0.45,0.94),
+                  transform 0.7s cubic-bezier(0.25,0.46,0.45,0.94);
+    }
+    .reveal.in-view {
+      opacity: 1;
+      transform: none;
+    }
+    .reveal--delay-1 { transition-delay: 0.1s; }
+    .reveal--delay-2 { transition-delay: 0.2s; }
+    .reveal--delay-3 { transition-delay: 0.3s; }
+    .reveal--delay-4 { transition-delay: 0.4s; }
+
+    /* Split-flap text */
+    .flip-text .char {
+      display: inline-block;
+      transition: transform 0.05s, opacity 0.05s;
+    }
+
+    /* Loading */
+    #loader {
+      position: fixed;
+      inset: 0;
+      background: var(--ink);
+      z-index: 99999;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      gap: 2rem;
+    }
+    .loader__logo {
+      font-size: 1.5rem;
+      font-weight: 800;
+      letter-spacing: -0.02em;
+      font-family: 'Space Grotesk', sans-serif;
+    }
+    .loader__bar-track {
+      width: 200px;
+      height: 2px;
+      background: rgba(255,255,255,0.08);
+      border-radius: 999px;
+      overflow: hidden;
+    }
+    .loader__bar {
+      height: 100%;
+      width: 0;
+      background: var(--acid);
+      border-radius: 999px;
+      transition: width 0.2s ease;
+    }
+    .loader__pct {
+      font-size: 0.75rem;
+      font-family: 'JetBrains Mono', monospace;
+      color: rgba(255,255,255,0.3);
+      letter-spacing: 0.08em;
+    }
+  </style>
+</head>
+<body>
+
+  <!-- LOADER -->
+  <div id="loader">
+    <div class="loader__logo">QueueCure <span style="color:var(--acid)">'26</span></div>
+    <div class="loader__bar-track"><div class="loader__bar" id="loader-bar"></div></div>
+    <div class="loader__pct" id="loader-pct">0%</div>
+  </div>
+
+  <!-- CURSOR -->
+  <div id="cursor-dot"></div>
+  <div id="cursor-ring"></div>
+
+  <!-- GRAIN -->
+  <div id="grain"></div>
+
+  <!-- BACKGROUND BLOBS -->
+  <div class="blob-container">
+    <div class="blob blob--1"></div>
+    <div class="blob blob--2"></div>
+    <div class="blob blob--3"></div>
+  </div>
+
+  <!-- WEBGL CANVAS (liquid background) -->
+  <canvas id="bg-canvas"></canvas>
+
+  <!-- NAV -->
+  <nav class="nav">
+    <a href="/" class="nav__logo">QueueCure</a>
+    <ul class="nav__links">
+      <li><a href="#features">Features</a></li>
+      <li><a href="#tech">Tech</a></li>
+      <li><a href="/receptionist.html">Dashboard</a></li>
+    </ul>
+    <div style="display:flex;gap:0.75rem;">
+      <a href="/receptionist.html" class="btn-pill btn-pill--outline" style="font-size:0.78rem;padding:0.6rem 1.2rem;">Receptionist</a>
+      <a href="/patient.html" class="btn-pill btn-pill--acid" style="font-size:0.78rem;padding:0.6rem 1.2rem;">Patient View</a>
+    </div>
+  </nav>
+
+  <!-- HERO -->
+  <section class="hero">
+    <div class="hero__bg-number">∞</div>
+    
+    <div class="hero__eyebrow">
+      <div class="hero__eyebrow-line"></div>
+      <span class="hero__eyebrow-text">Real-time · Socket.IO · MongoDB</span>
+    </div>
+
+    <h1 class="hero__title">
+      The <em>future</em> of<br>
+      clinic <span class="accent glitch" data-text="queues">queues</span><br>
+      <em>is here</em>
+    </h1>
+
+    <div class="hero__bottom">
+      <p class="hero__desc">
+        Zero waiting anxiety. Every patient tracked in real-time. QR codes, live tokens, atomic precision — all wrapped in one dashboard.
+      </p>
+      <div class="hero__cta-group">
+        <div class="token-chip">
+          <div class="token-chip__badge">07</div>
+          <span class="token-chip__text">Now Serving</span>
+          <div class="token-chip__status"></div>
+        </div>
+        <a href="/receptionist.html" class="btn-pill btn-pill--acid">
+          Open Dashboard
+          <span class="btn-pill__arrow">→</span>
+        </a>
+        <a href="/patient.html" class="btn-pill btn-pill--outline">
+          Patient View
+        </a>
+      </div>
+    </div>
+
+    <div class="scroll-hint">
+      <div class="scroll-hint__line"></div>
+      <span>Scroll</span>
+    </div>
+  </section>
+
+  <!-- TICKER -->
+  <div class="ticker">
+    <div class="ticker__track">
+      <!-- repeated twice for seamless loop -->
+      <div class="ticker__item">Real-Time Updates <span class="ticker__sep">★</span></div>
+      <div class="ticker__item">Socket.IO Powered <span class="ticker__sep">★</span></div>
+      <div class="ticker__item">QR Token Tracking <span class="ticker__sep">★</span></div>
+      <div class="ticker__item">Atomic Concurrency <span class="ticker__sep">★</span></div>
+      <div class="ticker__item">Zero Latency <span class="ticker__sep">★</span></div>
+      <div class="ticker__item">Multi-Clinic Ready <span class="ticker__sep">★</span></div>
+      <div class="ticker__item">MongoDB Backed <span class="ticker__sep">★</span></div>
+      <div class="ticker__item">Live Wait Estimation <span class="ticker__sep">★</span></div>
+      <div class="ticker__item">Real-Time Updates <span class="ticker__sep">★</span></div>
+      <div class="ticker__item">Socket.IO Powered <span class="ticker__sep">★</span></div>
+      <div class="ticker__item">QR Token Tracking <span class="ticker__sep">★</span></div>
+      <div class="ticker__item">Atomic Concurrency <span class="ticker__sep">★</span></div>
+      <div class="ticker__item">Zero Latency <span class="ticker__sep">★</span></div>
+      <div class="ticker__item">Multi-Clinic Ready <span class="ticker__sep">★</span></div>
+      <div class="ticker__item">MongoDB Backed <span class="ticker__sep">★</span></div>
+      <div class="ticker__item">Live Wait Estimation <span class="ticker__sep">★</span></div>
+    </div>
+  </div>
+
+  <!-- BENTO GRID -->
+  <section class="bento" id="features">
+    <div class="bento__label">
+      <span class="bento__label-num">01 /</span>
+      <span class="bento__label-text">Core Features</span>
+    </div>
+
+    <div class="bento__grid">
+      <!-- Card A — Main feature -->
+      <div class="bcard bcard--a reveal">
+        <div class="bcard__tag">
+          <div class="token-chip__status" style="width:6px;height:6px;"></div>
+          Live System
+        </div>
+        <div class="bcard__huge-num" id="live-counter">042</div>
+        <div class="bcard__title">Patients managed today,<br>in real time.</div>
+        <div class="bcard__desc">
+          Every registration, every token call, every skip — broadcast instantly to all connected screens via Socket.IO. No refresh needed. Ever.
+        </div>
+        <div class="queue-vis" id="queue-vis">
+          <div class="queue-vis__bar" style="--dur:2.1s;--del:0s;height:40%"></div>
+          <div class="queue-vis__bar" style="--dur:1.7s;--del:0.2s;height:70%"></div>
+          <div class="queue-vis__bar" style="--dur:2.4s;--del:0.4s;height:55%"></div>
+          <div class="queue-vis__bar" style="--dur:1.9s;--del:0.1s;height:85%"></div>
+          <div class="queue-vis__bar" style="--dur:2.2s;--del:0.6s;height:35%"></div>
+          <div class="queue-vis__bar" style="--dur:1.5s;--del:0.3s;height:60%"></div>
+          <div class="queue-vis__bar" style="--dur:2.6s;--del:0.5s;height:45%"></div>
+          <div class="queue-vis__bar" style="--dur:2.0s;--del:0.2s;height:90%"></div>
+          <div class="queue-vis__bar" style="--dur:1.8s;--del:0.7s;height:50%"></div>
+          <div class="queue-vis__bar" style="--dur:2.3s;--del:0.4s;height:75%"></div>
+          <div class="queue-vis__bar" style="--dur:1.6s;--del:0.1s;height:30%"></div>
+          <div class="queue-vis__bar" style="--dur:2.5s;--del:0.8s;height:65%"></div>
+        </div>
+      </div>
+
+      <!-- Card B — Token orbit -->
+      <div class="bcard bcard--b reveal reveal--delay-1">
+        <div class="bcard__tag">QR Tracking</div>
+        <div class="bcard__title">Your token.<br>Your screen.</div>
+        <div class="bcard__desc">
+          Scan once. Track forever. Know exactly where you stand in the queue from your phone.
+        </div>
+        <div class="token-orbit">
+          <div class="token-orbit__ring">
+            <div class="token-orbit__dot"></div>
+          </div>
+          <div class="token-orbit__center">07</div>
+        </div>
+      </div>
+
+      <!-- Card C -->
+      <div class="bcard bcard--c reveal reveal--delay-2">
+        <div style="margin-bottom:1rem"><svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"/></svg></div>
+        <div class="bcard__title">0ms<br>Latency</div>
+        <div class="bcard__desc">WebSocket connection. Real-time, always.</div>
+      </div>
+
+      <!-- Card D -->
+      <div class="bcard bcard--d reveal reveal--delay-3">
+        <div style="margin-bottom:1rem"><svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="11" width="18" height="11" rx="2" ry="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg></div>
+        <div class="bcard__title">Atomic<br>Tokens</div>
+        <div class="bcard__desc">MongoDB $inc prevents duplicates even under concurrent load.</div>
+      </div>
+
+      <!-- Card E -->
+      <div class="bcard bcard--e reveal reveal--delay-4">
+        <div style="margin-bottom:1rem"><svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="20" x2="18" y2="10"/><line x1="12" y1="20" x2="12" y2="4"/><line x1="6" y1="20" x2="6" y2="14"/></svg></div>
+        <div class="bcard__title">Smart<br>ETA</div>
+        <div class="bcard__desc">Dynamic wait estimation. Tokens ahead × avg. time, live.</div>
+      </div>
+
+      <!-- Card F — Full width tech strip -->
+      <div class="bcard bcard--f reveal" id="tech">
+        <div class="bcard__inner-flex">
+          <div>
+            <div class="bcard__tag" style="margin-bottom:1.5rem">Tech Stack</div>
+            <div class="bcard__title" style="font-size:1.6rem;">Built on a stack<br>that never blinks.</div>
+          </div>
+          <div>
+            <div style="margin-bottom:0.5rem">
+              <span class="tech-pill"><span class="tech-pill__dot"></span>Node.js 18+</span>
+              <span class="tech-pill"><span class="tech-pill__dot"></span>Express 4</span>
+              <span class="tech-pill"><span class="tech-pill__dot"></span>Socket.IO 4</span>
+            </div>
+            <div>
+              <span class="tech-pill"><span class="tech-pill__dot"></span>MongoDB</span>
+              <span class="tech-pill"><span class="tech-pill__dot"></span>Mongoose 8</span>
+              <span class="tech-pill"><span class="tech-pill__dot"></span>QRCode npm</span>
+            </div>
+          </div>
+          <div>
+            <div class="bcard__desc" style="max-width:28ch;">
+              Production-ready, full-stack. Multi-clinic isolation, atomic writes, real-time sockets. No shortcuts.
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- STATEMENT -->
+  <section class="statement">
+    <div class="statement__bg-text">CURE</div>
+    <div class="statement__content">
+      <div class="bento__label" style="justify-content:center;margin-bottom:2.5rem;">
+        <span class="bento__label-num">02 /</span>
+        <span class="bento__label-text">The Mission</span>
+      </div>
+      <h2 class="statement__title reveal">
+        Waiting rooms<br>
+        shouldn't feel like<br>
+        <span class="highlight">waiting rooms.</span>
+      </h2>
+      <p class="statement__sub reveal reveal--delay-1">
+        QueueCure '26 was built for one purpose: eliminating the anxiety of not knowing. Real-time. Transparent. Instant.
+      </p>
+      <div class="statement__cta-row reveal reveal--delay-2">
+        <a href="/receptionist.html" class="btn-pill btn-pill--acid">
+          Try the Dashboard
+          <span class="btn-pill__arrow">→</span>
+        </a>
+        <a href="/patient.html" class="btn-pill btn-pill--outline">
+          Patient Screen
+        </a>
+      </div>
+    </div>
+  </section>
+
+  <!-- HORIZONTAL FEATURE SHOWCASE -->
+  <section class="showcase">
+    <div class="showcase__header">
+      <h2 class="showcase__title reveal">How it works</h2>
+      <span class="showcase__count">05 features</span>
+    </div>
+    <div class="showcase__track" id="showcase-track">
+      <div class="scard scard--1">
+        <div class="scard__bg"></div>
+        <div class="scard__orb"></div>
+        <div class="scard__content">
+          <div>
+            <div class="scard__icon"><svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"/></svg></div>
+            <div class="scard__num" style="margin-top:1rem">01 / 05</div>
+          </div>
+          <div>
+            <div class="scard__title">Instant Registration</div>
+            <div class="scard__desc">Receptionist enters patient name → token issued atomically → QR generated → patient added to live queue. All in under a second.</div>
+          </div>
+        </div>
+      </div>
+
+      <div class="scard scard--2">
+        <div class="scard__bg"></div>
+        <div class="scard__orb"></div>
+        <div class="scard__content">
+          <div>
+            <div class="scard__icon"><svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><rect x="5" y="2" width="14" height="20" rx="2" ry="2"/><line x1="12" y1="18" x2="12.01" y2="18"/></svg></div>
+            <div class="scard__num" style="margin-top:1rem">02 / 05</div>
+          </div>
+          <div>
+            <div class="scard__title">QR Personal Tracker</div>
+            <div class="scard__desc">Patients scan their QR and see their live position, how many are ahead, and estimated wait time — all updating in real time.</div>
+          </div>
+        </div>
+      </div>
+
+      <div class="scard scard--3">
+        <div class="scard__bg"></div>
+        <div class="scard__orb"></div>
+        <div class="scard__content">
+          <div>
+            <div class="scard__icon"><svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="20" x2="18" y2="10"/><line x1="12" y1="20" x2="12" y2="4"/><line x1="6" y1="20" x2="6" y2="14"/></svg></div>
+            <div class="scard__num" style="margin-top:1rem">03 / 05</div>
+          </div>
+          <div>
+            <div class="scard__title">Live Wait Estimation</div>
+            <div class="scard__desc">Dynamically calculated: Patients Ahead × Avg. Consultation Time. Configurable. Updates on every queue event automatically.</div>
+          </div>
+        </div>
+      </div>
+
+      <div class="scard scard--4">
+        <div class="scard__bg"></div>
+        <div class="scard__orb"></div>
+        <div class="scard__content">
+          <div>
+            <div class="scard__icon"><svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="23 4 23 10 17 10"/><polyline points="1 20 1 14 7 14"/><path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"/></svg></div>
+            <div class="scard__num" style="margin-top:1rem">04 / 05</div>
+          </div>
+          <div>
+            <div class="scard__title">Skip & Recall</div>
+            <div class="scard__desc">Patient unresponsive? Skip them. Need to re-announce? Recall the token. Full queue control at the receptionist's fingertips.</div>
+          </div>
+        </div>
+      </div>
+
+      <div class="scard scard--5">
+        <div class="scard__bg"></div>
+        <div class="scard__orb"></div>
+        <div class="scard__content">
+          <div>
+            <div class="scard__icon"><svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M3 21h18"/><path d="M9 8h1"/><path d="M9 12h1"/><path d="M9 16h1"/><path d="M14 8h1"/><path d="M14 12h1"/><path d="M14 16h1"/><path d="M5 21V5a2 2 0 0 1 2-2h10a2 2 0 0 1 2 2v16"/></svg></div>
+            <div class="scard__num" style="margin-top:1rem">05 / 05</div>
+          </div>
+          <div>
+            <div class="scard__title">Multi-Clinic Isolation</div>
+            <div class="scard__desc">Each clinic operates in its own Socket.IO room. Scale to any number of branches without interference. Production-ready by design.</div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- COUNTER STRIP -->
+  <section class="counter-strip">
+    <div class="counter-strip__grid">
+      <div class="counter-item reveal">
+        <div class="counter-item__value"><span id="cnt1">0</span>ms</div>
+        <div class="counter-item__label">Socket Latency</div>
+      </div>
+      <div class="counter-item reveal reveal--delay-1">
+        <div class="counter-item__value"><span id="cnt2">0</span><span>∞</span></div>
+        <div class="counter-item__label">Real-Time Updates</div>
+      </div>
+      <div class="counter-item reveal reveal--delay-2">
+        <div class="counter-item__value"><span id="cnt3">0</span>%</div>
+        <div class="counter-item__label">Concurrency Safe</div>
+      </div>
+      <div class="counter-item reveal reveal--delay-3">
+        <div class="counter-item__value"><span id="cnt4">0</span>/7</div>
+        <div class="counter-item__label">Always Operational</div>
+      </div>
+    </div>
+  </section>
+
+  <!-- FINAL CTA -->
+  <section class="final-cta">
+    <div class="final-cta__overtitle">Ready to transform your clinic?</div>
+    <h2 class="final-cta__title reveal">
+      Stop the<br>
+      <em>chaos.</em><br>
+      Start the<br>
+      cure.
+    </h2>
+    <div class="final-cta__btns reveal reveal--delay-1">
+      <a href="/receptionist.html" class="btn-pill btn-pill--acid">
+        Open Receptionist Dashboard
+        <span class="btn-pill__arrow">→</span>
+      </a>
+      <a href="/patient.html" class="btn-pill btn-pill--outline">
+        Patient Waiting Room
+      </a>
+    </div>
+  </section>
+
+  <!-- FOOTER -->
+  <footer class="footer-bar">
+    <span>© 2026 QueueCure. All rights reserved.</span>
+    <span style="display:flex;align-items:center;gap:0.5rem;">
+      <span class="token-chip__status" style="width:6px;height:6px;"></span>
+      System Operational
+    </span>
+    <span>
+      <a href="/receptionist.html">Dashboard</a>
+      &nbsp;·&nbsp;
+      <a href="/patient.html">Patient</a>
+    </span>
+  </footer>
+
+  <!-- TOAST -->
+  <div id="toast-container" style="position:fixed;bottom:1.5rem;right:1.5rem;z-index:9000;display:flex;flex-direction:column;gap:0.75rem;"></div>
+
+  <script>
+  (function() {
+    'use strict';
+
+    /* ══════════════════════════════════════════════
+       LOADER
+    ══════════════════════════════════════════════ */
+    const loaderBar = document.getElementById('loader-bar');
+    const loaderPct = document.getElementById('loader-pct');
+    const loader    = document.getElementById('loader');
+    let pct = 0;
+    const iv = setInterval(() => {
+      pct = Math.min(100, pct + Math.random() * 18 + 5);
+      loaderBar.style.width = pct + '%';
+      loaderPct.textContent = Math.floor(pct) + '%';
+      if (pct >= 100) {
+        clearInterval(iv);
+        setTimeout(() => {
+          loader.style.transition = 'opacity 0.6s';
+          loader.style.opacity = '0';
+          setTimeout(() => loader.remove(), 600);
+          initAll();
+        }, 200);
+      }
+    }, 120);
+
+    function initAll() {
+      initCursor();
+      initWebGLCanvas();
+      initScrollReveal();
+      initCounters();
+      initBcardMouseTracking();
+      animateLiveCounter();
+      initShowcaseScroll();
+    }
+
+    /* ══════════════════════════════════════════════
+       MAGNETIC CURSOR
+    ══════════════════════════════════════════════ */
+    function initCursor() {
+      const dot  = document.getElementById('cursor-dot');
+      const ring = document.getElementById('cursor-ring');
+      let mx = -100, my = -100;
+      let rx = -100, ry = -100;
+
+      document.addEventListener('mousemove', e => {
+        mx = e.clientX; my = e.clientY;
+        dot.style.left  = mx + 'px';
+        dot.style.top   = my + 'px';
+      });
+
+      // Ring follows with lag
+      function animRing() {
+        rx += (mx - rx) * 0.12;
+        ry += (my - ry) * 0.12;
+        ring.style.left = rx + 'px';
+        ring.style.top  = ry + 'px';
+        requestAnimationFrame(animRing);
+      }
+      animRing();
+
+      // Magnetic pull on interactive elements
+      document.querySelectorAll('a, button, .bcard').forEach(el => {
+        el.addEventListener('mouseenter', () => {
+          dot.style.width  = '12px';
+          dot.style.height = '12px';
+        });
+        el.addEventListener('mouseleave', () => {
+          dot.style.width  = '8px';
+          dot.style.height = '8px';
+        });
+      });
+    }
+
+    /* ══════════════════════════════════════════════
+       WEBGL CANVAS — Liquid Plasma Background
+    ══════════════════════════════════════════════ */
+    function initWebGLCanvas() {
+      const canvas = document.getElementById('bg-canvas');
+      canvas.width  = window.innerWidth;
+      canvas.height = window.innerHeight;
+
+      const gl = canvas.getContext('webgl') || canvas.getContext('experimental-webgl');
+      if (!gl) return;
+
+      const vsSource = `
+        attribute vec4 aPos;
+        void main() { gl_Position = aPos; }
+      `;
+      const fsSource = `
+        precision mediump float;
+        uniform float uTime;
+        uniform vec2  uRes;
+
+        float plasma(vec2 uv, float t) {
+          float v = 0.0;
+          v += sin(uv.x * 5.0 + t);
+          v += sin(uv.y * 4.0 + t * 0.7);
+          v += sin((uv.x + uv.y) * 3.0 + t * 1.2);
+          v += sin(sqrt(uv.x*uv.x + uv.y*uv.y) * 4.0 + t * 0.8);
+          return v;
+        }
+
+        void main() {
+          vec2 uv = (gl_FragCoord.xy - uRes * 0.5) / min(uRes.x, uRes.y);
+          float t = uTime * 0.18;
+          float v = plasma(uv, t);
+          
+          vec3 col1 = vec3(0.31, 0.14, 0.93); // violet
+          vec3 col2 = vec3(0.05, 0.58, 0.53); // teal
+          vec3 col3 = vec3(0.02, 0.04, 0.08); // ink
+
+          float a = sin(v * 1.2) * 0.5 + 0.5;
+          float b = cos(v * 0.8 + 1.2) * 0.5 + 0.5;
+          
+          vec3 color = mix(col3, mix(col1, col2, b), a * 0.12);
+          gl_FragColor = vec4(color, 1.0);
+        }
+      `;
+
+      function compileShader(gl, type, src) {
+        const s = gl.createShader(type);
+        gl.shaderSource(s, src); gl.compileShader(s);
+        return s;
+      }
+
+      const prog = gl.createProgram();
+      gl.attachShader(prog, compileShader(gl, gl.VERTEX_SHADER, vsSource));
+      gl.attachShader(prog, compileShader(gl, gl.FRAGMENT_SHADER, fsSource));
+      gl.linkProgram(prog); gl.useProgram(prog);
+
+      const buf = gl.createBuffer();
+      gl.bindBuffer(gl.ARRAY_BUFFER, buf);
+      gl.bufferData(gl.ARRAY_BUFFER, new Float32Array([-1,-1, 1,-1, -1,1, 1,1]), gl.STATIC_DRAW);
+
+      const aPos = gl.getAttribLocation(prog, 'aPos');
+      gl.enableVertexAttribArray(aPos);
+      gl.vertexAttribPointer(aPos, 2, gl.FLOAT, false, 0, 0);
+
+      const uTime = gl.getUniformLocation(prog, 'uTime');
+      const uRes  = gl.getUniformLocation(prog, 'uRes');
+      gl.uniform2f(uRes, canvas.width, canvas.height);
+
+      let start = null;
+      function render(ts) {
+        if (!start) start = ts;
+        gl.uniform1f(uTime, (ts - start) * 0.001);
+        gl.drawArrays(gl.TRIANGLE_STRIP, 0, 4);
+        requestAnimationFrame(render);
+      }
+      requestAnimationFrame(render);
+
+      window.addEventListener('resize', () => {
+        canvas.width  = window.innerWidth;
+        canvas.height = window.innerHeight;
+        gl.viewport(0, 0, canvas.width, canvas.height);
+        gl.uniform2f(uRes, canvas.width, canvas.height);
+      });
+    }
+
+    /* ══════════════════════════════════════════════
+       SCROLL REVEAL
+    ══════════════════════════════════════════════ */
+    function initScrollReveal() {
+      const els = document.querySelectorAll('.reveal, .counter-item');
+      const obs = new IntersectionObserver((entries) => {
+        entries.forEach(e => {
+          if (e.isIntersecting) {
+            e.target.classList.add('in-view');
+            obs.unobserve(e.target);
+          }
+        });
+      }, { threshold: 0.15 });
+      els.forEach(el => obs.observe(el));
+    }
+
+    /* ══════════════════════════════════════════════
+       ANIMATED COUNTERS
+    ══════════════════════════════════════════════ */
+    function initCounters() {
+      const targets = [
+        { el: document.getElementById('cnt1'), target: 0,  suffix: '' },
+        { el: document.getElementById('cnt2'), target: 0,  suffix: '' }, // shows ∞ so we animate to nothing
+        { el: document.getElementById('cnt3'), target: 100, suffix: '' },
+        { el: document.getElementById('cnt4'), target: 24, suffix: '' },
+      ];
+      // cnt2 stays 0 (∞ shown as literal in HTML)
+
+      const obs = new IntersectionObserver((entries) => {
+        entries.forEach(e => {
+          if (!e.isIntersecting) return;
+          const cfg = targets.find(t => t.el && t.el.closest('.counter-item') === e.target);
+          if (!cfg || cfg.done) return;
+          cfg.done = true;
+          animateCount(cfg.el, cfg.target, 1800);
+          obs.unobserve(e.target);
+        });
+      }, { threshold: 0.5 });
+
+      document.querySelectorAll('.counter-item').forEach((el, i) => {
+        targets[i] = { ...targets[i] };
+        const innerEl = el.querySelector('span[id]');
+        if (innerEl) targets[i].el = innerEl;
+        obs.observe(el);
+      });
+    }
+
+    function animateCount(el, target, duration) {
+      if (!el) return;
+      const start = performance.now();
+      const startVal = 0;
+      function step(now) {
+        const t = Math.min((now - start) / duration, 1);
+        const ease = 1 - Math.pow(1 - t, 4);
+        el.textContent = Math.round(startVal + (target - startVal) * ease);
+        if (t < 1) requestAnimationFrame(step);
+        else el.textContent = target;
+      }
+      requestAnimationFrame(step);
+    }
+
+    /* ══════════════════════════════════════════════
+       BCARD MOUSE TRACKING (gradient follow)
+    ══════════════════════════════════════════════ */
+    function initBcardMouseTracking() {
+      document.querySelectorAll('.bcard').forEach(card => {
+        card.addEventListener('mousemove', e => {
+          const rect = card.getBoundingClientRect();
+          const x = ((e.clientX - rect.left) / rect.width) * 100;
+          const y = ((e.clientY - rect.top) / rect.height) * 100;
+          card.style.setProperty('--mx', x + '%');
+          card.style.setProperty('--my', y + '%');
+        });
+      });
+    }
+
+    /* ══════════════════════════════════════════════
+       LIVE COUNTER ANIMATION
+    ══════════════════════════════════════════════ */
+    function animateLiveCounter() {
+      const el = document.getElementById('live-counter');
+      if (!el) return;
+      let val = 42;
+      setInterval(() => {
+        if (Math.random() < 0.3) {
+          val = Math.min(99, val + 1);
+          el.textContent = String(val).padStart(3, '0');
+          // flash effect
+          el.style.transition = 'color 0.1s';
+          el.style.color = 'rgba(181,255,62,0.9)';
+          setTimeout(() => { el.style.color = ''; }, 300);
+        }
+      }, 2000);
+    }
+
+    /* ══════════════════════════════════════════════
+       SHOWCASE AUTO-SCROLL HINT
+    ══════════════════════════════════════════════ */
+    function initShowcaseScroll() {
+      const track = document.getElementById('showcase-track');
+      if (!track) return;
+      let dir = 1;
+      let auto = true;
+      
+      track.addEventListener('mouseenter', () => auto = false);
+      track.addEventListener('mouseleave', () => auto = true);
+
+      setInterval(() => {
+        if (!auto) return;
+        const maxScroll = track.scrollWidth - track.clientWidth;
+        track.scrollLeft += dir * 1;
+        if (track.scrollLeft >= maxScroll) dir = -1;
+        if (track.scrollLeft <= 0) dir = 1;
+      }, 20);
+    }
+
+  })();
+  </script>
+</body>
+</html>
